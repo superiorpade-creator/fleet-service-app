@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+body {
+  @apply bg-paper text-ink font-body;
+}
+
+/* Large, thumb-friendly tap targets — this app is used outdoors on phones */
+button, a, input[type="checkbox"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: #FF6A13;
+  color: white;
+}
