@@ -33,6 +33,7 @@ export function CalendarGrid({ monthDate, jobs }: { monthDate: Date; jobs: Job[]
   });
 
   const jobsByDate = jobs.reduce<Record<string, Job[]>>((acc, job) => {
+    if (!job.scheduled_date) return acc;
     (acc[job.scheduled_date] ??= []).push(job);
     return acc;
   }, {});
