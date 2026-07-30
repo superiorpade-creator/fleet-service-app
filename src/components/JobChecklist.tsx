@@ -79,7 +79,6 @@ export function JobChecklist({
     setError(null);
     await ensureInProgress();
 
-
     const { data, error } = await supabase
       .from("units")
       .insert({
@@ -230,7 +229,7 @@ export function JobChecklist({
 
       {/* PDF exists - anyone can download it */}
       {isClosed && pdfUrl && (
-        
+        <a
           href={`/api/jobs/${job.id}/pdf`}
           className="block w-full text-center bg-ink text-white font-semibold py-4 rounded-lg hover:opacity-90 transition"
         >
