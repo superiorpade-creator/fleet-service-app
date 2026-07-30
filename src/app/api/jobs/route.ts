@@ -26,11 +26,8 @@ export async function POST(request: NextRequest) {
 
   const body: CreateJobBody = await request.json();
 
-  if (!body.client_name?.trim() || !body.units?.length) {
-    return NextResponse.json(
-      { error: "Client name and at least one unit are required." },
-      { status: 400 }
-    );
+  if (!body.client_name?.trim()) {
+    return NextResponse.json({ error: "Client name is required." }, { status: 400 });
   }
 
   const { data: job, error: jobError } = await supabase
@@ -53,17 +50,19 @@ export async function POST(request: NextRequest) {
     await supabase.from("job_crew").insert(body.crew_ids.map((profile_id) => ({ job_id: job.id, profile_id })));
   }
 
-  const unitRows = body.units.map((u, i) => ({
-    job_id: job.id,
-    unit_number: u.unit_number,
-    location: u.location ?? null,
-    unit_type: u.unit_type ?? null,
-    sort_order: i,
-  }));
+  if (body.units?.length) {
+    const unitRows = body.units.map((u, i) => ({
+      job_id: job.id,
+      unit_number: u.unit_number,
+      location: u.location ?? null,
+      unit_type: u.unit_type ?? null,
+      sort_order: i,
+    }));
 
-  const { error: unitsError } = await supabase.from("units").insert(unitRows);
-  if (unitsError) {
-    return NextResponse.json({ error: unitsError.message }, { status: 500 });
+    const { error: unitsError } = await supabase.from("units").insert(unitRows);
+    if (unitsError) {
+      return NextResponse.json({ error: unitsError.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ job }, { status: 201 });

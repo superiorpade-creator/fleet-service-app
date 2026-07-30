@@ -41,8 +41,8 @@ export async function POST(request: NextRequest) {
   const results: BulkResult[] = [];
 
   for (const input of jobs) {
-    if (!input.client_name?.trim() || !input.units?.length) {
-      results.push({ client_name: input.client_name || "(unnamed)", ok: false, error: "Missing client name or units" });
+    if (!input.client_name?.trim()) {
+      results.push({ client_name: input.client_name || "(unnamed)", ok: false, error: "Missing client name" });
       continue;
     }
 
@@ -61,21 +61,23 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    const { error: unitsError } = await supabase.from("units").insert(
-      input.units.map((u, i) => ({
-        job_id: job.id,
-        unit_number: u.unit_number,
-        location: u.location ?? null,
-        unit_type: u.unit_type ?? null,
-        sort_order: i,
-      }))
-    );
+    if (input.units?.length) {
+      const { error: unitsError } = await supabase.from("units").insert(
+        input.units.map((u, i) => ({
+          job_id: job.id,
+          unit_number: u.unit_number,
+          location: u.location ?? null,
+          unit_type: u.unit_type ?? null,
+          sort_order: i,
+        }))
+      );
 
-    if (unitsError) {
-      // Roll back the orphaned job so a failed batch doesn't leave empty work orders behind.
-      await supabase.from("jobs").delete().eq("id", job.id);
-      results.push({ client_name: input.client_name, ok: false, error: unitsError.message });
-      continue;
+      if (unitsError) {
+        // Roll back the orphaned job so a failed batch doesn't leave empty work orders behind.
+        await supabase.from("jobs").delete().eq("id", job.id);
+        results.push({ client_name: input.client_name, ok: false, error: unitsError.message });
+        continue;
+      }
     }
 
     results.push({ client_name: input.client_name, ok: true, job_id: job.id, job_number: job.job_number });

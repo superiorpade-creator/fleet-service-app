@@ -3,26 +3,40 @@ import { Document, Page, Text, View, StyleSheet, renderToBuffer, Image } from "@
 import type { Job, Unit, Profile } from "./types";
 import { formatWorkOrderNumber } from "./format";
 
+const GRID_COLUMNS = 7;
+const CELL_WIDTH = `${100 / GRID_COLUMNS}%`;
+
 const styles = StyleSheet.create({
   page: { padding: 32, fontSize: 10, fontFamily: "Helvetica", color: "#14181F" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20, borderBottom: "2 solid #14181F", paddingBottom: 12 },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+    borderBottom: "2 solid #14181F",
+    paddingBottom: 12,
+  },
   logo: { width: 120, height: 40, objectFit: "contain" },
   title: { fontSize: 18, fontFamily: "Helvetica-Bold" },
-  metaGrid: { flexDirection: "row", marginBottom: 16, gap: 24 },
+  metaGrid: { flexDirection: "row", marginBottom: 20, gap: 24 },
   metaBlock: { flexDirection: "column" },
   metaLabel: { fontSize: 8, color: "#3E4C59", textTransform: "uppercase", marginBottom: 2 },
   metaValue: { fontSize: 11, fontFamily: "Helvetica-Bold" },
-  tableHeader: { flexDirection: "row", backgroundColor: "#14181F", color: "#FFFFFF", padding: 6, fontFamily: "Helvetica-Bold" },
-  row: { flexDirection: "row", padding: 6, borderBottom: "1 solid #E3E1DB" },
-  colUnit: { width: "25%" },
-  colLocation: { width: "25%" },
-  colType: { width: "20%" },
-  colStatus: { width: "15%" },
-  colNotes: { width: "15%" },
-  statusServiced: { color: "#1F8A57", fontFamily: "Helvetica-Bold" },
-  statusNotServiced: { color: "#D64545", fontFamily: "Helvetica-Bold" },
-  footer: { marginTop: 24, paddingTop: 12, borderTop: "1 solid #E3E1DB", fontSize: 9, color: "#3E4C59" },
-  summary: { marginTop: 16, fontSize: 10 },
+
+  groupLabel: { fontSize: 9, fontFamily: "Helvetica-Bold", marginBottom: 4 },
+  groupRule: { borderBottom: "0.5 solid #E3E1DB", marginBottom: 8 },
+  grid: { flexDirection: "row", flexWrap: "wrap", marginBottom: 16 },
+  cell: { width: CELL_WIDTH, flexDirection: "row", alignItems: "center", marginBottom: 6, paddingRight: 4 },
+  checkboxOn: { width: 7, height: 7, backgroundColor: "#1F8A57", marginRight: 4 },
+  checkboxOff: { width: 7, height: 7, border: "0.75 solid #B4B2A9", marginRight: 4 },
+  unitNumber: { fontSize: 8 },
+
+  summary: { fontSize: 10, marginTop: 4, marginBottom: 12 },
+
+  notesHeading: { fontSize: 9, fontFamily: "Helvetica-Bold", marginBottom: 4 },
+  noteLine: { fontSize: 8, color: "#3E4C59", marginBottom: 2 },
+
+  footer: { marginTop: 16, paddingTop: 12, borderTop: "1 solid #E3E1DB", fontSize: 9, color: "#3E4C59" },
   pageNumber: { position: "absolute", bottom: 16, right: 32, fontSize: 8, color: "#3E4C59" },
 });
 
@@ -34,8 +48,47 @@ interface CompletionPdfProps {
   companyLogoUrl?: string;
 }
 
+function UnitCell(unit: Unit) {
+  return React.createElement(
+    View,
+    { style: styles.cell, key: unit.id, wrap: false },
+    React.createElement(View, { style: unit.serviced ? styles.checkboxOn : styles.checkboxOff }),
+    React.createElement(Text, { style: styles.unitNumber }, unit.unit_number)
+  );
+}
+
+function UnitGroup(label: string | null, groupUnits: Unit[], key: string) {
+  return React.createElement(
+    View,
+    { key, wrap: true },
+    label
+      ? React.createElement(
+          View,
+          {},
+          React.createElement(Text, { style: styles.groupLabel }, `${label} (${groupUnits.length})`),
+          React.createElement(View, { style: styles.groupRule })
+        )
+      : null,
+    React.createElement(View, { style: styles.grid }, ...groupUnits.map(UnitCell))
+  );
+}
+
 function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: CompletionPdfProps) {
   const servicedCount = units.filter((u) => u.serviced).length;
+
+  const groups: { label: string | null; units: Unit[] }[] = [];
+  const groupIndex = new Map<string, number>();
+  for (const unit of units) {
+    const key = unit.unit_type?.trim() || "";
+    if (!groupIndex.has(key)) {
+      groupIndex.set(key, groups.length);
+      groups.push({ label: key || null, units: [] });
+    }
+    groups[groupIndex.get(key)!].units.push(unit);
+  }
+  const showGroupLabels = groups.length > 1 || (groups.length === 1 && groups[0].label !== null);
+
+  const unitsWithNotes = units.filter((u) => u.notes?.trim());
 
   return React.createElement(
     Document,
@@ -43,14 +96,12 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
     React.createElement(
       Page,
       { size: "LETTER", style: styles.page },
-      // Header
       React.createElement(
         View,
         { style: styles.header },
         React.createElement(Text, { style: styles.title }, companyName),
         companyLogoUrl ? React.createElement(Image, { src: companyLogoUrl, style: styles.logo }) : null
       ),
-      // Job meta
       React.createElement(
         View,
         { style: styles.metaGrid },
@@ -70,7 +121,7 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
           View,
           { style: styles.metaBlock },
           React.createElement(Text, { style: styles.metaLabel }, "Service Date"),
-          React.createElement(Text, { style: styles.metaValue }, job.scheduled_date)
+          React.createElement(Text, { style: styles.metaValue }, job.scheduled_date ?? "—")
         ),
         React.createElement(
           View,
@@ -89,50 +140,23 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
           )
         )
       ),
-      // Unit table (fixed = repeats at the top of every page this table
-      // spans onto, so a 50+ truck work order still reads clearly on page 2, 3...)
-      React.createElement(
-        View,
-        { style: styles.tableHeader, fixed: true },
-        React.createElement(Text, { style: styles.colUnit }, "Unit #"),
-        React.createElement(Text, { style: styles.colLocation }, "Location"),
-        React.createElement(Text, { style: styles.colType }, "Type"),
-        React.createElement(Text, { style: styles.colStatus }, "Status"),
-        React.createElement(Text, { style: styles.colNotes }, "Notes")
-      ),
-      ...units.map((unit) =>
-        React.createElement(
-          View,
-          { style: styles.row, key: unit.id, wrap: false },
-          React.createElement(Text, { style: styles.colUnit }, unit.unit_number),
-          React.createElement(Text, { style: styles.colLocation }, unit.location || "—"),
-          React.createElement(Text, { style: styles.colType }, unit.unit_type || "—"),
-          React.createElement(
-            Text,
-            { style: [styles.colStatus, unit.serviced ? styles.statusServiced : styles.statusNotServiced] },
-            unit.serviced ? "Serviced" : "Not Serviced"
-          ),
-          React.createElement(Text, { style: styles.colNotes }, unit.notes || "—")
-        )
-      ),
-      // Summary
-      React.createElement(
-        View,
-        { style: styles.summary },
-        React.createElement(
-          Text,
-          {},
-          `${servicedCount} of ${units.length} units serviced`
-        )
-      ),
-      // Footer
+      ...groups.map((g, i) => UnitGroup(showGroupLabels ? g.label ?? "Units" : null, g.units, `group-${i}`)),
+      React.createElement(Text, { style: styles.summary }, `${servicedCount} of ${units.length} units serviced`),
+      unitsWithNotes.length > 0
+        ? React.createElement(
+            View,
+            {},
+            React.createElement(Text, { style: styles.notesHeading }, "Notes"),
+            ...unitsWithNotes.map((u) =>
+              React.createElement(Text, { style: styles.noteLine, key: u.id }, `${u.unit_number} — ${u.notes}`)
+            )
+          )
+        : null,
       React.createElement(
         View,
         { style: styles.footer },
         React.createElement(Text, {}, `Work order generated ${new Date().toLocaleString()} — ${companyName}`)
       ),
-      // Page number — shows on every page, most useful once the unit list
-      // spans more than one (e.g. a 50+ truck work order).
       React.createElement(Text, {
         style: styles.pageNumber,
         fixed: true,
@@ -143,10 +167,6 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
   );
 }
 
-/**
- * Renders the completion PDF for a closed-out job to a Buffer, ready to
- * upload to Supabase Storage or stream back as a download.
- */
 export async function renderCompletionPdf(props: CompletionPdfProps): Promise<Buffer> {
   return renderToBuffer(CompletionDocument(props) as any);
 }

@@ -23,10 +23,9 @@ export async function POST(request: NextRequest) {
     const buffer = await file.arrayBuffer();
     const { units, suggestedClientName } = parseWorkbook(buffer);
 
-    if (units.length === 0) {
-      return NextResponse.json({ error: "No unit rows found in that file." }, { status: 400 });
-    }
-
+    // Zero units is a valid outcome, not an error — some accounts (rotating
+    // fleets) use a blank template where the truck list isn't known ahead
+    // of time. The job just starts empty and crew add units on the spot.
     return NextResponse.json({ units, suggestedClientName });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Couldn't parse that file.";

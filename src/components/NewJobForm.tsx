@@ -62,6 +62,12 @@ export function NewJobForm({
     }
 
     setUnits(body.units);
+
+    // If the sheet itself named the customer and the admin hasn't already
+    // picked one or typed a name, use that instead of leaving it blank.
+    if (body.suggestedClientName && !customerId && !clientName.trim()) {
+      setClientName(body.suggestedClientName);
+    }
   }
 
   function updateUnit(index: number, field: keyof ImportedUnitRow, value: string) {
@@ -80,8 +86,8 @@ export function NewJobForm({
     e.preventDefault();
     setError(null);
 
-    if (!clientName.trim() || units.length === 0) {
-      setError("Client name and at least one unit are required.");
+    if (!clientName.trim()) {
+      setError("Client name is required.");
       return;
     }
 
@@ -217,6 +223,12 @@ export function NewJobForm({
             {parsing ? "Parsing…" : fileName ? fileName : "Click to upload a spreadsheet (.xlsx, .xls, .csv)"}
           </p>
         </div>
+        {fileName && !parsing && units.length === 0 && !error && (
+          <p className="text-xs text-steel mt-1.5">
+            No units found in that file — that's fine for accounts where the truck list isn't known ahead
+            of time. This job will start empty; crew add each truck as they service it.
+          </p>
+        )}
       </div>
 
       {/* Reviewable unit table */}
