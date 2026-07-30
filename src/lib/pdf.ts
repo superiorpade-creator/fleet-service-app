@@ -23,6 +23,7 @@ const styles = StyleSheet.create({
   statusNotServiced: { color: "#D64545", fontFamily: "Helvetica-Bold" },
   footer: { marginTop: 24, paddingTop: 12, borderTop: "1 solid #E3E1DB", fontSize: 9, color: "#3E4C59" },
   summary: { marginTop: 16, fontSize: 10 },
+  pageNumber: { position: "absolute", bottom: 16, right: 32, fontSize: 8, color: "#3E4C59" },
 });
 
 interface CompletionPdfProps {
@@ -88,10 +89,11 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
           )
         )
       ),
-      // Unit table
+      // Unit table (fixed = repeats at the top of every page this table
+      // spans onto, so a 50+ truck work order still reads clearly on page 2, 3...)
       React.createElement(
         View,
-        { style: styles.tableHeader },
+        { style: styles.tableHeader, fixed: true },
         React.createElement(Text, { style: styles.colUnit }, "Unit #"),
         React.createElement(Text, { style: styles.colLocation }, "Location"),
         React.createElement(Text, { style: styles.colType }, "Type"),
@@ -101,7 +103,7 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
       ...units.map((unit) =>
         React.createElement(
           View,
-          { style: styles.row, key: unit.id },
+          { style: styles.row, key: unit.id, wrap: false },
           React.createElement(Text, { style: styles.colUnit }, unit.unit_number),
           React.createElement(Text, { style: styles.colLocation }, unit.location || "—"),
           React.createElement(Text, { style: styles.colType }, unit.unit_type || "—"),
@@ -128,7 +130,15 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
         View,
         { style: styles.footer },
         React.createElement(Text, {}, `Work order generated ${new Date().toLocaleString()} — ${companyName}`)
-      )
+      ),
+      // Page number — shows on every page, most useful once the unit list
+      // spans more than one (e.g. a 50+ truck work order).
+      React.createElement(Text, {
+        style: styles.pageNumber,
+        fixed: true,
+        render: ({ pageNumber, totalPages }: { pageNumber: number; totalPages: number }) =>
+          totalPages > 1 ? `Page ${pageNumber} of ${totalPages}` : "",
+      })
     )
   );
 }
