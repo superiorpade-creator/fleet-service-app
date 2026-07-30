@@ -56,6 +56,7 @@ export function JobChecklist({
       .eq("id", unit.id);
 
     if (error) {
+      // Roll back on failure
       setUnits((prev) => prev.map((u) => (u.id === unit.id ? { ...u, serviced: unit.serviced } : u)));
       setError("Couldn't save that check — check your connection and try again.");
     }
@@ -66,6 +67,9 @@ export function JobChecklist({
     await supabase.from("units").update({ notes }).eq("id", unit.id);
   }
 
+  // For accounts where the truck list isn't known ahead of time (rotating
+  // fleets), crew add a unit right when they service it — adding IS the
+  // record of it being done, so it's inserted already checked off.
   async function handleAddUnit(e: React.FormEvent) {
     e.preventDefault();
     const unit_number = newUnitNumber.trim();
@@ -74,6 +78,7 @@ export function JobChecklist({
     setAdding(true);
     setError(null);
     await ensureInProgress();
+
 
     const { data, error } = await supabase
       .from("units")
@@ -134,6 +139,7 @@ export function JobChecklist({
 
   return (
     <div>
+      {/* Progress bar */}
       {units.length > 0 && (
         <div className="mb-4">
           <div className="flex justify-between text-sm mb-1">
@@ -159,6 +165,7 @@ export function JobChecklist({
         )}
       </div>
 
+      {/* Add a truck on the spot — for accounts where the list isn't known ahead of time */}
       {!isClosed && (
         <form onSubmit={handleAddUnit} className="flex gap-2 mb-6">
           <input
@@ -180,6 +187,7 @@ export function JobChecklist({
 
       {error && <p className="text-alert text-sm mb-3">{error}</p>}
 
+      {/* Not yet marked complete — crew (or admin) check things off and complete it */}
       {!isClosed && (
         <button
           onClick={handleMarkComplete}
@@ -196,6 +204,7 @@ export function JobChecklist({
         </button>
       )}
 
+      {/* Marked complete but no PDF yet — admin reviews/edits, then generates it */}
       {isClosed && !pdfUrl && isAdmin && (
         <div className="flex flex-col gap-2">
           <p className="text-sm text-steel">
@@ -219,6 +228,7 @@ export function JobChecklist({
         <p className="text-sm text-steel text-center py-3">Marked complete — an admin will finalize the paperwork.</p>
       )}
 
+      {/* PDF exists — anyone can download it */}
       {isClosed && pdfUrl && (
         
           href={`/api/jobs/${job.id}/pdf`}
