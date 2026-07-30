@@ -58,7 +58,7 @@ export function JobChecklist({
     if (error) {
       // Roll back on failure
       setUnits((prev) => prev.map((u) => (u.id === unit.id ? { ...u, serviced: unit.serviced } : u)));
-      setError("Couldn't save that check — check your connection and try again.");
+      setError("Couldn't save that check - check your connection and try again.");
     }
   }
 
@@ -68,7 +68,7 @@ export function JobChecklist({
   }
 
   // For accounts where the truck list isn't known ahead of time (rotating
-  // fleets), crew add a unit right when they service it — adding IS the
+  // fleets), crew add a unit right when they service it - adding IS the
   // record of it being done, so it's inserted already checked off.
   async function handleAddUnit(e: React.FormEvent) {
     e.preventDefault();
@@ -95,7 +95,7 @@ export function JobChecklist({
     setAdding(false);
 
     if (error || !data) {
-      setError("Couldn't add that truck — check your connection and try again.");
+      setError("Couldn't add that truck - check your connection and try again.");
       return;
     }
 
@@ -160,12 +160,12 @@ export function JobChecklist({
         ))}
         {units.length === 0 && !isClosed && (
           <p className="text-sm text-steel text-center py-4 border border-dashed border-line rounded-lg">
-            No trucks yet — add each one below as you service it.
+            No trucks yet - add each one below as you service it.
           </p>
         )}
       </div>
 
-      {/* Add a truck on the spot — for accounts where the list isn't known ahead of time */}
+      {/* Add a truck on the spot - for accounts where the list isn't known ahead of time */}
       {!isClosed && (
         <form onSubmit={handleAddUnit} className="flex gap-2 mb-6">
           <input
@@ -180,14 +180,14 @@ export function JobChecklist({
             disabled={adding || !newUnitNumber.trim()}
             className="bg-ink text-white font-semibold px-5 rounded-lg disabled:opacity-40 hover:opacity-90 transition"
           >
-            {adding ? "Adding…" : "+ Add"}
+            {adding ? "Adding..." : "+ Add"}
           </button>
         </form>
       )}
 
       {error && <p className="text-alert text-sm mb-3">{error}</p>}
 
-      {/* Not yet marked complete — crew (or admin) check things off and complete it */}
+      {/* Not yet marked complete - crew (or admin) check things off and complete it */}
       {!isClosed && (
         <button
           onClick={handleMarkComplete}
@@ -195,7 +195,7 @@ export function JobChecklist({
           className="w-full bg-safety text-white font-semibold py-4 rounded-lg text-base disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition"
         >
           {closing
-            ? "Marking complete…"
+            ? "Marking complete..."
             : allServiced
             ? "Mark Work Order Complete"
             : units.length === 0
@@ -204,7 +204,7 @@ export function JobChecklist({
         </button>
       )}
 
-      {/* Marked complete but no PDF yet — admin reviews/edits, then generates it */}
+      {/* Marked complete but no PDF yet - admin reviews/edits, then generates it */}
       {isClosed && !pdfUrl && isAdmin && (
         <div className="flex flex-col gap-2">
           <p className="text-sm text-steel">
@@ -219,16 +219,16 @@ export function JobChecklist({
             disabled={generating}
             className="w-full bg-safety text-white font-semibold py-4 rounded-lg text-base disabled:opacity-50 hover:opacity-90 transition"
           >
-            {generating ? "Generating…" : "Generate Completion PDF"}
+            {generating ? "Generating..." : "Generate Completion PDF"}
           </button>
         </div>
       )}
 
       {isClosed && !pdfUrl && !isAdmin && (
-        <p className="text-sm text-steel text-center py-3">Marked complete — an admin will finalize the paperwork.</p>
+        <p className="text-sm text-steel text-center py-3">Marked complete - an admin will finalize the paperwork.</p>
       )}
 
-      {/* PDF exists — anyone can download it */}
+      {/* PDF exists - anyone can download it */}
       {isClosed && pdfUrl && (
         
           href={`/api/jobs/${job.id}/pdf`}
