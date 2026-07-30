@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { parseUnitsFromWorkbook } from "@/lib/excel";
+import { parseWorkbook } from "@/lib/excel";
 
 export async function POST(request: NextRequest) {
   const supabase = createClient();
@@ -21,13 +21,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const buffer = await file.arrayBuffer();
-    const units = parseUnitsFromWorkbook(buffer);
+    const { units, suggestedClientName } = parseWorkbook(buffer);
 
     if (units.length === 0) {
       return NextResponse.json({ error: "No unit rows found in that file." }, { status: 400 });
     }
 
-    return NextResponse.json({ units });
+    return NextResponse.json({ units, suggestedClientName });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Couldn't parse that file.";
     return NextResponse.json({ error: message }, { status: 400 });
