@@ -8,6 +8,12 @@ export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
 
+  // When someone clicks an invite (or "forgot password") email link,
+  // Supabase redirects here with #type=invite or #type=recovery in the
+  // URL and automatically signs them into a temporary session - but they
+  // don't have a password yet. Without this check, they'd land on a
+  // normal login form with no way to actually get in, which is exactly
+  // the "no option to create an account" problem.
   const [mode, setMode] = useState<"login" | "set-password" | "checking">("checking");
 
   useEffect(() => {
