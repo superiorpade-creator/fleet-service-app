@@ -6,7 +6,7 @@ import { buildCustomerStatusList } from "@/lib/service-status";
 import { startOfMonth, endOfMonth, format, parse } from "date-fns";
 import type { Customer, Job } from "@/lib/types";
 
-export default async function CalendarPage({
+export const dynamic = "force-dynamic";export default async function CalendarPage({
   searchParams,
 }: {
   searchParams: { month?: string };
