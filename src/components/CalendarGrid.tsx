@@ -1,8 +1,8 @@
 "use client";
 
-import { useTransition } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   startOfMonth,
   endOfMonth,
@@ -11,7 +11,6 @@ import {
   eachDayOfInterval,
   format,
   isSameMonth,
-  isToday,
   addMonths,
   subMonths,
 } from "date-fns";
@@ -25,9 +24,19 @@ const STATUS_DOT = {
 };
 
 export function CalendarGrid({ monthDate, jobs }: { monthDate: Date; jobs: Job[] }) {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
+
+  // "Today" depends on the viewer's local timezone, which the server can't
+  // know in advance (Vercel renders in UTC, browsers render in whatever
+  // timezone the person is actually in). Computing it during render on both
+  // sides can disagree near midnight UTC, which breaks hydration. Instead,
+  // the server renders with no day highlighted, and the browser fills in
+  // today's date itself right after the page loads - a normal post-mount
+  // state update, not part of hydration, so it can never mismatch.
+  const [todayKey, setTodayKey] = useState<string | null>(null);
+  useEffect(() => {
+    setTodayKey(format(new Date(), "yyyy-MM-dd"));
+  }, []);
 
   const days = eachDayOfInterval({
     start: startOfWeek(startOfMonth(monthDate)),
@@ -40,50 +49,35 @@ export function CalendarGrid({ monthDate, jobs }: { monthDate: Date; jobs: Job[]
     return acc;
   }, {});
 
-  // Wrapping the navigation in startTransition (and disabling the buttons
-  // while isPending) prevents a fast double-click from firing two
-  // overlapping navigations - without this, a slower first request could
-  // resolve AFTER a second one and silently overwrite it with stale
-  // content, which is what was causing month navigation to appear to
-  // skip or freeze on an old month.
-  function goToMonth(date: Date) {
-    if (isPending) return;
+  function monthHref(date: Date) {
     const params = new URLSearchParams(searchParams);
     params.set("month", format(date, "yyyy-MM"));
-    startTransition(() => {
-      router.push(`/calendar?${params.toString()}`);
-    });
+    return `/calendar?${params.toString()}`;
   }
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-          {format(monthDate, "MMMM yyyy")}
-          {isPending && <span className="text-sm font-normal text-steel">Loading...</span>}
-        </h1>
+        <h1 className="font-display text-2xl font-bold">{format(monthDate, "MMMM yyyy")}</h1>
         <div className="flex gap-2">
-          <button
-            onClick={() => goToMonth(subMonths(monthDate, 1))}
-            disabled={isPending}
-            className="px-3 py-2 border border-line rounded hover:bg-white transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          
+            href={monthHref(subMonths(monthDate, 1))}
+            className="px-3 py-2 border border-line rounded hover:bg-white transition text-sm"
           >
-            ← Prev
-          </button>
-          <button
-            onClick={() => goToMonth(new Date())}
-            disabled={isPending}
-            className="px-3 py-2 border border-line rounded hover:bg-white transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            &larr; Prev
+          </a>
+          
+            href={monthHref(new Date())}
+            className="px-3 py-2 border border-line rounded hover:bg-white transition text-sm"
           >
             Today
-          </button>
-          <button
-            onClick={() => goToMonth(addMonths(monthDate, 1))}
-            disabled={isPending}
-            className="px-3 py-2 border border-line rounded hover:bg-white transition text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          </a>
+          
+            href={monthHref(addMonths(monthDate, 1))}
+            className="px-3 py-2 border border-line rounded hover:bg-white transition text-sm"
           >
-            Next →
-          </button>
+            Next &rarr;
+          </a>
         </div>
       </div>
 
@@ -111,7 +105,7 @@ export function CalendarGrid({ monthDate, jobs }: { monthDate: Date; jobs: Job[]
               <span
                 className={clsx(
                   "text-xs font-mono w-5 h-5 flex items-center justify-center rounded-full",
-                  isToday(day) && "bg-safety text-white font-semibold"
+                  key === todayKey && "bg-safety text-white font-semibold"
                 )}
               >
                 {format(day, "d")}
