@@ -26,22 +26,38 @@ export default async function CalendarPage({
   const isAdmin = profile?.role === "admin";
 
   const monthDate = searchParams.month ? parse(searchParams.month, "yyyy-MM", new Date()) : new Date();
+  const monthStart = format(startOfMonth(monthDate), "yyyy-MM-dd");
+  const monthEnd = format(endOfMonth(monthDate), "yyyy-MM-dd");
 
-  // RLS scopes this automatically: admins see every job, crew see only
-  // jobs they're assigned to (see job_crew policies in supabase/schema.sql).
-  const { data: jobs } = await supabase
-    .from("jobs")
-    .select("*")
-    .gte("scheduled_date", format(startOfMonth(monthDate), "yyyy-MM-dd"))
-    .lte("scheduled_date", format(endOfMonth(monthDate), "yyyy-MM-dd"));
+  // These two are independent of each other, so run them at the same time
+  // instead of one after another - this is what was making month
+  // navigation feel slow (or time out entirely): every click was paying
+  // for several database round trips in a row instead of in parallel.
+  const [jobsResult, remindersData] = await Promise.all([
+    supabase
+      .from("jobs")
+      .select("*")
+      .gte("scheduled_date", monthStart)
+      .lte("scheduled_date", monthEnd),
+    isAdmin
+      ? Promise.all([
+          supabase.from("customers").select("id, name, contact_name, phone, email, address, frequency, notes, created_at"),
+          supabase
+            .from("jobs")
+            .select("customer_id, status, completed_at, scheduled_date")
+            .not("customer_id", "is", null),
+        ])
+      : Promise.resolve(null),
+  ]);
 
-  // Service reminders are an admin-only concern — crew don't need to see
+  const jobs = jobsResult.data;
+
+  // Service reminders are an admin-only concern - crew don't need to see
   // which accounts are overdue for scheduling.
   let reminderCustomers: ReturnType<typeof buildCustomerStatusList> = [];
-  if (isAdmin) {
-    const { data: customers } = await supabase.from("customers").select("*");
-    const { data: allJobs } = await supabase.from("jobs").select("customer_id, status, completed_at, scheduled_date");
-    reminderCustomers = buildCustomerStatusList((customers as Customer[]) ?? [], allJobs ?? []);
+  if (isAdmin && remindersData) {
+    const [customersResult, allJobsResult] = remindersData;
+    reminderCustomers = buildCustomerStatusList((customersResult.data as Customer[]) ?? [], allJobsResult.data ?? []);
   }
 
   return (

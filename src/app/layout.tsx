@@ -9,12 +9,23 @@ const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "600"], variabl
 export const metadata: Metadata = {
   title: "Fleet Ops",
   description: "Fleet wash job scheduling and checklists",
+  manifest: "/manifest.json",
+  icons: {
+    icon: "/icon-192.png",
+    apple: "/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Fleet Ops",
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  themeColor: "#14181F",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
