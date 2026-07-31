@@ -60,19 +60,19 @@ export function CalendarGrid({ monthDate, jobs }: { monthDate: Date; jobs: Job[]
       <div className="flex items-center justify-between mb-4">
         <h1 className="font-display text-2xl font-bold">{format(monthDate, "MMMM yyyy")}</h1>
         <div className="flex gap-2">
-          
+          <a
             href={monthHref(subMonths(monthDate, 1))}
             className="px-3 py-2 border border-line rounded hover:bg-white transition text-sm"
           >
             &larr; Prev
           </a>
-          
+          <a
             href={monthHref(new Date())}
             className="px-3 py-2 border border-line rounded hover:bg-white transition text-sm"
           >
             Today
           </a>
-          
+          <a
             href={monthHref(addMonths(monthDate, 1))}
             className="px-3 py-2 border border-line rounded hover:bg-white transition text-sm"
           >
