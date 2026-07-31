@@ -25,7 +25,8 @@ export const dynamic = "force-dynamic";export default async function CalendarPag
 
   const isAdmin = profile?.role === "admin";
 
-  const monthDate = searchParams.month ? parse(searchParams.month, "yyyy-MM", new Date()) : new Date();
+  const [y, m] = (searchParams.month || format(new Date(), "yyyy-MM")).split("-").map(Number);
+  const monthDate = new Date(Date.UTC(y, m - 1, 1, 12, 0, 0));
   const monthStart = format(startOfMonth(monthDate), "yyyy-MM-dd");
   const monthEnd = format(endOfMonth(monthDate), "yyyy-MM-dd");
 
