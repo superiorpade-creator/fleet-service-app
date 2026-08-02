@@ -62,7 +62,7 @@ export function EditJobForm({
     setUnits((prev) => prev.filter((_, idx) => idx !== i));
   }
 
-  // Returns true on success — shared by "Save Changes" and "Save & Generate PDF".
+  // Returns true on success - shared by "Save Changes" and "Save & Generate PDF".
   async function saveChanges(): Promise<boolean> {
     setSaving(true);
     setError(null);
@@ -157,7 +157,7 @@ export function EditJobForm({
     <div className="flex flex-col gap-6">
       <div>
         <span className="inline-block text-xs font-mono font-semibold text-safety bg-safety/10 px-2 py-1 rounded">
-          {formatWorkOrderNumber(job.job_number)}
+          {job.job_number ? formatWorkOrderNumber(job.job_number) : "Not yet scheduled - no WO# assigned yet"}
         </span>
       </div>
 
@@ -167,7 +167,7 @@ export function EditJobForm({
             <p className="font-semibold text-sm">Crew marked this work order complete.</p>
             <p className="text-xs text-steel mt-0.5">
               {pdfUrl
-                ? "PDF generated — edit below and click Save & Generate PDF again if you make changes."
+                ? "PDF generated - edit below and click Save & Generate PDF again if you make changes."
                 : "Review the checklist and fix anything needed below, then generate the PDF when you're ready."}
             </p>
           </div>
@@ -196,7 +196,7 @@ export function EditJobForm({
             }}
             className="w-full border border-line rounded px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-safety bg-white"
           >
-            <option value="">— No customer record linked —</option>
+            <option value="">- No customer record linked -</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
@@ -282,7 +282,7 @@ export function EditJobForm({
                     unit.serviced ? "bg-go border-go text-white" : "border-line text-transparent"
                   )}
                 >
-                  ✓
+                  OK
                 </button>
                 <input
                   value={unit.unit_number}
@@ -317,7 +317,7 @@ export function EditJobForm({
           disabled={saving || generating}
           className="flex-1 min-w-[140px] bg-white border border-line text-ink font-semibold py-3 rounded-lg disabled:opacity-50 hover:bg-paper transition"
         >
-          {saving && !generating ? "Saving…" : "Save Changes"}
+          {saving && !generating ? "Saving..." : "Save Changes"}
         </button>
 
         {isCompleted && (
@@ -326,7 +326,7 @@ export function EditJobForm({
             disabled={saving || generating}
             className="flex-1 min-w-[200px] bg-safety text-white font-semibold py-3 rounded-lg disabled:opacity-50 hover:opacity-90 transition"
           >
-            {generating ? "Generating…" : pdfUrl ? "Save & Regenerate PDF" : "Save & Generate PDF"}
+            {generating ? "Generating..." : pdfUrl ? "Save & Regenerate PDF" : "Save & Generate PDF"}
           </button>
         )}
 

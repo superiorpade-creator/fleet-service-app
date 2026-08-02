@@ -23,6 +23,10 @@ const styles = StyleSheet.create({
   metaLabel: { fontSize: 8, color: "#3E4C59", textTransform: "uppercase", marginBottom: 2 },
   metaValue: { fontSize: 11, fontFamily: "Helvetica-Bold" },
 
+  // Compact checkbox grid — this is the main body of the PDF. Units are
+  // grouped by type (Tractor, Trailer, ...) when the sheet had that info,
+  // each group laid out as a dense multi-column grid rather than one row
+  // per unit, so even a 150+ unit work order fits on a single page.
   groupLabel: { fontSize: 9, fontFamily: "Helvetica-Bold", marginBottom: 4 },
   groupRule: { borderBottom: "0.5 solid #E3E1DB", marginBottom: 8 },
   grid: { flexDirection: "row", flexWrap: "wrap", marginBottom: 16 },
@@ -48,6 +52,7 @@ interface CompletionPdfProps {
   companyLogoUrl?: string;
 }
 
+/** One checkbox + unit number cell in the grid. */
 function UnitCell(unit: Unit) {
   return React.createElement(
     View,
@@ -57,6 +62,7 @@ function UnitCell(unit: Unit) {
   );
 }
 
+/** A labeled group (e.g. "TRACTOR (85)") followed by its grid of unit cells. */
 function UnitGroup(label: string | null, groupUnits: Unit[], key: string) {
   return React.createElement(
     View,
@@ -76,6 +82,9 @@ function UnitGroup(label: string | null, groupUnits: Unit[], key: string) {
 function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: CompletionPdfProps) {
   const servicedCount = units.filter((u) => u.serviced).length;
 
+  // Group by unit_type, preserving first-seen order. If every unit shares
+  // the same (or no) type, skip the group label entirely — no point
+  // printing "UNITS (15)" as a header when there's nothing to distinguish.
   const groups: { label: string | null; units: Unit[] }[] = [];
   const groupIndex = new Map<string, number>();
   for (const unit of units) {
@@ -96,12 +105,14 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
     React.createElement(
       Page,
       { size: "LETTER", style: styles.page },
+      // Header
       React.createElement(
         View,
         { style: styles.header },
         React.createElement(Text, { style: styles.title }, companyName),
         companyLogoUrl ? React.createElement(Image, { src: companyLogoUrl, style: styles.logo }) : null
       ),
+      // Job meta
       React.createElement(
         View,
         { style: styles.metaGrid },
@@ -109,7 +120,7 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
           View,
           { style: styles.metaBlock },
           React.createElement(Text, { style: styles.metaLabel }, "Work Order #"),
-          React.createElement(Text, { style: styles.metaValue }, formatWorkOrderNumber(job.job_number))
+          React.createElement(Text, { style: styles.metaValue }, job.job_number ? formatWorkOrderNumber(job.job_number) : "WO-PENDING")
         ),
         React.createElement(
           View,
@@ -140,8 +151,12 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
           )
         )
       ),
+      // Compact checkbox grid, grouped by type when meaningful
       ...groups.map((g, i) => UnitGroup(showGroupLabels ? g.label ?? "Units" : null, g.units, `group-${i}`)),
+      // Summary
       React.createElement(Text, { style: styles.summary }, `${servicedCount} of ${units.length} units serviced`),
+      // Notes — only units that actually have one, so the common case (no
+      // notes) doesn't add anything to the page.
       unitsWithNotes.length > 0
         ? React.createElement(
             View,
@@ -152,11 +167,14 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
             )
           )
         : null,
+      // Footer
       React.createElement(
         View,
         { style: styles.footer },
         React.createElement(Text, {}, `Work order generated ${new Date().toLocaleString()} — ${companyName}`)
       ),
+      // Page number — only shows if this ever does spill past one page
+      // (e.g. an exceptionally large work order).
       React.createElement(Text, {
         style: styles.pageNumber,
         fixed: true,
@@ -167,6 +185,10 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
   );
 }
 
+/**
+ * Renders the completion PDF for a closed-out job to a Buffer, ready to
+ * upload to Supabase Storage or stream back as a download.
+ */
 export async function renderCompletionPdf(props: CompletionPdfProps): Promise<Buffer> {
   return renderToBuffer(CompletionDocument(props) as any);
 }

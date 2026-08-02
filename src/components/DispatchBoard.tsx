@@ -86,7 +86,7 @@ export function DispatchBoard({
         <div>
           <h1 className="font-display text-xl font-bold">Dispatch Board</h1>
           <p className="text-xs text-steel">
-            {format(parseISO(weekStart), "MMM d")} – {format(addDays(parseISO(weekStart), 6), "MMM d, yyyy")}
+            {format(parseISO(weekStart), "MMM d")} - {format(addDays(parseISO(weekStart), 6), "MMM d, yyyy")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -100,7 +100,7 @@ export function DispatchBoard({
             onClick={() => goToWeek(subWeeks(parseISO(weekStart), 1))}
             className="px-3 py-2 border border-line rounded hover:bg-paper transition text-sm"
           >
-            ← Prev
+            Prev
           </button>
           <button
             onClick={() => goToWeek(new Date())}
@@ -112,7 +112,7 @@ export function DispatchBoard({
             onClick={() => goToWeek(addWeeks(parseISO(weekStart), 1))}
             className="px-3 py-2 border border-line rounded hover:bg-paper transition text-sm"
           >
-            Next →
+            Next
           </button>
         </div>
       </div>
@@ -139,7 +139,7 @@ export function DispatchBoard({
           <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
             {unassigned.length === 0 && (
               <p className="text-xs text-steel px-1 py-4 text-center">
-                Nothing waiting — new work orders land here until you drag them onto a tech.
+                Nothing waiting - new work orders land here until you drag them onto a tech.
               </p>
             )}
             {unassigned.map((job) => (
@@ -197,7 +197,7 @@ export function DispatchBoard({
 
             {technicians.length === 0 && (
               <p className="text-sm text-steel px-3 py-6">
-                No technicians yet —{" "}
+                No technicians yet -{" "}
                 <Link href="/admin/crew" className="text-safety font-semibold hover:underline">
                   add crew accounts
                 </Link>{" "}
@@ -243,8 +243,8 @@ function BoardCard({
         <span className="font-medium truncate">{job.client_name}</span>
       </div>
       <div className="flex items-center gap-1.5 text-[11px]">
-        <span className="text-safety font-mono font-semibold">{formatWorkOrderNumber(job.job_number)}</span>
-        <span className="text-steel font-mono">· {job.unit_count} units</span>
+        {job.job_number && <span className="text-safety font-mono font-semibold">{formatWorkOrderNumber(job.job_number)}</span>}
+        <span className="text-steel font-mono">{job.job_number ? "\u00b7 " : ""}{job.unit_count} units</span>
       </div>
     </Link>
   );

@@ -48,12 +48,14 @@ export default async function JobDetailPage({ params }: { params: { id: string }
       <Navbar role={profile?.role ?? "crew"} />
       <main className="max-w-2xl mx-auto px-4 py-6 pb-24">
         <Link href="/calendar" className="text-sm text-steel hover:text-ink">
-          ← Back to calendar
+          Back to calendar
         </Link>
 
         <div className="flex items-start justify-between mt-2 mb-1">
           <div>
-            <p className="text-xs font-mono font-semibold text-safety">{formatWorkOrderNumber((job as Job).job_number)}</p>
+            <p className="text-xs font-mono font-semibold text-safety">
+              {(job as Job).job_number ? formatWorkOrderNumber((job as Job).job_number as number) : "Not yet scheduled"}
+            </p>
             <h1 className="font-display text-2xl font-bold">{(job as Job).client_name}</h1>
           </div>
           {isAdmin && (

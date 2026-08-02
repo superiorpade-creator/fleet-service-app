@@ -3,7 +3,7 @@
 import { useState } from "react";
 import clsx from "clsx";
 import { FREQUENCY_LABEL } from "@/lib/service-status";
-import type { CustomerFrequency, CustomerWithStatus, ServiceStatus } from "@/lib/types";
+import type { CustomerFrequency, CustomerWithStatus, ImportedUnitRow, ServiceStatus } from "@/lib/types";
 
 const STATUS_LABEL: Record<ServiceStatus, string> = {
   overdue: "Overdue",
@@ -28,6 +28,7 @@ interface FormState {
   address: string;
   frequency: CustomerFrequency;
   notes: string;
+  defaultUnits: ImportedUnitRow[];
 }
 
 const EMPTY_FORM: FormState = {
@@ -39,11 +40,13 @@ const EMPTY_FORM: FormState = {
   address: "",
   frequency: "monthly",
   notes: "",
+  defaultUnits: [],
 };
 
 export function CustomersManager({ initialCustomers }: { initialCustomers: CustomerWithStatus[] }) {
   const [customers, setCustomers] = useState(initialCustomers);
   const [form, setForm] = useState<FormState | null>(null); // null = form closed
+  const [loadingUnits, setLoadingUnits] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testStatus, setTestStatus] = useState<string | null>(null);
@@ -64,8 +67,8 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
 
     setTestStatus(
       body.overdue === 0
-        ? `Sent — no accounts are currently overdue, so it was a "you're all caught up" test text to ${body.texted} number(s).`
-        : `Sent — ${body.overdue} overdue account${body.overdue === 1 ? "" : "s"} texted to ${body.texted} number(s).`
+        ? `Sent - no accounts are currently overdue, so it was a "you're all caught up" test text to ${body.texted} number(s).`
+        : `Sent - ${body.overdue} overdue account${body.overdue === 1 ? "" : "s"} texted to ${body.texted} number(s).`
     );
   }
 
@@ -74,7 +77,7 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
     setError(null);
   }
 
-  function openEdit(c: CustomerWithStatus) {
+  async function openEdit(c: CustomerWithStatus) {
     setForm({
       id: c.id,
       name: c.name,
@@ -84,8 +87,41 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
       address: c.address ?? "",
       frequency: c.frequency,
       notes: c.notes ?? "",
+      defaultUnits: [],
     });
     setError(null);
+    setLoadingUnits(true);
+
+    const res = await fetch(`/api/customers/${c.id}/units`);
+    const body = await res.json();
+    setLoadingUnits(false);
+
+    if (res.ok) {
+      setForm((prev) =>
+        prev
+          ? {
+              ...prev,
+              defaultUnits: (body.units ?? []).map((u: any) => ({
+                unit_number: u.unit_number,
+                location: u.location ?? "",
+                unit_type: u.unit_type ?? "",
+              })),
+            }
+          : prev
+      );
+    }
+  }
+
+  function updateDefaultUnit(i: number, field: keyof ImportedUnitRow, value: string) {
+    setForm((prev) => (prev ? { ...prev, defaultUnits: prev.defaultUnits.map((u, idx) => (idx === i ? { ...u, [field]: value } : u)) } : prev));
+  }
+
+  function addDefaultUnit() {
+    setForm((prev) => (prev ? { ...prev, defaultUnits: [...prev.defaultUnits, { unit_number: "", location: "", unit_type: "" }] } : prev));
+  }
+
+  function removeDefaultUnit(i: number) {
+    setForm((prev) => (prev ? { ...prev, defaultUnits: prev.defaultUnits.filter((_, idx) => idx !== i) } : prev));
   }
 
   async function handleSave() {
@@ -121,10 +157,29 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
         });
 
     const body = await res.json();
-    setSaving(false);
 
     if (!res.ok) {
+      setSaving(false);
       setError(body.error ?? "Couldn't save that customer.");
+      return;
+    }
+
+    const customerId = form.id ?? body.customer.id;
+
+    // Save the default unit list too - for a brand new customer this
+    // creates it for the first time; for an existing one it replaces
+    // whatever was there (add a truck, remove one that's been sold).
+    const cleanUnits = form.defaultUnits.filter((u) => u.unit_number.trim().length > 0);
+    const unitsRes = await fetch(`/api/customers/${customerId}/units`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ units: cleanUnits }),
+    });
+
+    setSaving(false);
+
+    if (!unitsRes.ok) {
+      setError("Customer saved, but the default unit list didn't save. Try editing again.");
       return;
     }
 
@@ -172,7 +227,7 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
             disabled={testSending}
             className="border border-line text-steel font-semibold px-4 py-2.5 rounded hover:bg-paper disabled:opacity-50 transition"
           >
-            {testSending ? "Sending…" : "Send Test Alert"}
+            {testSending ? "Sending..." : "Send Test Alert"}
           </button>
           {testStatus && <span className="text-xs text-steel">{testStatus}</span>}
         </div>
@@ -219,8 +274,65 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={2}
               className="w-full border border-line rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-safety"
-              placeholder="Gate code, preferred contact time, anything the crew should know…"
+              placeholder="Gate code, preferred contact time, anything the crew should know..."
             />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-steel uppercase tracking-wide">
+                Default Units ({form.defaultUnits.length})
+              </label>
+              <button type="button" onClick={addDefaultUnit} className="text-safety text-sm font-semibold">
+                + Add Unit
+              </button>
+            </div>
+            <p className="text-xs text-steel mb-2">
+              Their usual fleet. New jobs for this customer auto-fill from this list instead of needing a
+              fresh spreadsheet every time. Remove a truck here once it's sold; doesn't affect past work orders.
+            </p>
+
+            {loadingUnits ? (
+              <p className="text-sm text-steel">Loading...</p>
+            ) : (
+              <div className="border border-line rounded-lg overflow-hidden">
+                <div className="grid grid-cols-[1fr_1fr_1fr_auto] bg-ink text-white text-xs font-semibold uppercase px-3 py-2">
+                  <span>Unit #</span>
+                  <span>Location</span>
+                  <span>Type</span>
+                  <span></span>
+                </div>
+                <div className="max-h-56 overflow-y-auto divide-y divide-line">
+                  {form.defaultUnits.map((unit, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 px-3 py-1.5 items-center bg-white">
+                      <input
+                        value={unit.unit_number}
+                        onChange={(e) => updateDefaultUnit(i, "unit_number", e.target.value)}
+                        className="font-mono text-sm border-b border-transparent focus:border-safety focus:outline-none py-1 bg-transparent"
+                      />
+                      <input
+                        value={unit.location ?? ""}
+                        onChange={(e) => updateDefaultUnit(i, "location", e.target.value)}
+                        className="text-sm border-b border-transparent focus:border-safety focus:outline-none py-1 bg-transparent"
+                      />
+                      <input
+                        value={unit.unit_type ?? ""}
+                        onChange={(e) => updateDefaultUnit(i, "unit_type", e.target.value)}
+                        className="text-sm border-b border-transparent focus:border-safety focus:outline-none py-1 bg-transparent"
+                      />
+                      <button type="button" onClick={() => removeDefaultUnit(i)} className="text-alert text-xs font-semibold px-2">
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  {form.defaultUnits.length === 0 && (
+                    <p className="text-xs text-steel px-3 py-4 text-center">
+                      No default units yet - add some, or leave empty for rotating-fleet accounts.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {error && <p className="text-alert text-sm">{error}</p>}
@@ -231,7 +343,7 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
               disabled={saving}
               className="bg-safety text-white font-semibold px-4 py-2 rounded disabled:opacity-50 hover:opacity-90 transition"
             >
-              {saving ? "Saving…" : "Save"}
+              {saving ? "Saving..." : "Save"}
             </button>
             <button
               onClick={() => setForm(null)}
@@ -263,11 +375,11 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
                     {c.phone && <span className="block">{c.phone}</span>}
                   </>
                 ) : (
-                  "—"
+                  "-"
                 )}
               </span>
               <span className="text-xs">{FREQUENCY_LABEL[c.frequency]}</span>
-              <span className="text-xs font-mono text-steel">{c.last_service_date ?? "—"}</span>
+              <span className="text-xs font-mono text-steel">{c.last_service_date ?? "-"}</span>
               <span className={clsx("text-[11px] font-semibold px-2 py-1 rounded-full w-fit", STATUS_STYLE[c.status])}>
                 {c.status === "overdue" ? `${STATUS_LABEL[c.status]} (${c.days_overdue}d)` : STATUS_LABEL[c.status]}
               </span>
@@ -282,7 +394,7 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
             </div>
           ))}
           {customers.length === 0 && (
-            <p className="text-sm text-steel px-3 py-6 text-center">No customers yet — add your first one above.</p>
+            <p className="text-sm text-steel px-3 py-6 text-center">No customers yet - add your first one above.</p>
           )}
         </div>
       </div>

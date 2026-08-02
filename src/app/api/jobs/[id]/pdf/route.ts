@@ -27,7 +27,8 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   }
 
   const buffer = Buffer.from(await data.arrayBuffer());
-  const filename = `${formatWorkOrderNumber(job.job_number)}-${job.client_name.replace(/[^a-z0-9]+/gi, "-")}.pdf`;
+  const woLabel = job.job_number ? formatWorkOrderNumber(job.job_number) : "WO-PENDING";
+  const filename = `${woLabel}-${job.client_name.replace(/[^a-z0-9]+/gi, "-")}.pdf`;
 
   return new NextResponse(buffer, {
     headers: {

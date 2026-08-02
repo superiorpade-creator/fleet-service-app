@@ -47,7 +47,7 @@ export interface Unit {
 
 export interface Job {
   id: string;
-  job_number: number; // auto-assigned by the DB, e.g. 42 → "WO-00042"
+  job_number: number | null; // auto-assigned by the DB once scheduled_date is set; null until then
   customer_id: string | null; // optional link to a Customers record
   client_name: string;
   scheduled_date: string | null; // ISO date e.g. 2026-08-04, or null until placed on the dispatch board
@@ -87,7 +87,7 @@ export interface EditableUnitRow extends ImportedUnitRow {
 // technician ids, and a unit count (for the card subtitle).
 export interface BoardJob {
   id: string;
-  job_number: number;
+  job_number: number | null;
   client_name: string;
   scheduled_date: string | null;
   status: JobStatus;

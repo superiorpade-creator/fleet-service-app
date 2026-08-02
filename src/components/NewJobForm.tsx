@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import clsx from "clsx";
 import type { Customer, ImportedUnitRow, Profile } from "@/lib/types";
 
@@ -25,11 +26,12 @@ export function NewJobForm({
   const [crewIds, setCrewIds] = useState<string[]>([]);
   const [units, setUnits] = useState<ImportedUnitRow[]>([]);
   const [parsing, setParsing] = useState(false);
+  const [loadingDefaults, setLoadingDefaults] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
 
-  function handleCustomerSelect(id: string) {
+  async function handleCustomerSelect(id: string) {
     if (id === "") {
       setCustomerId(null);
       return;
@@ -37,6 +39,34 @@ export function NewJobForm({
     setCustomerId(id);
     const match = customers.find((c) => c.id === id);
     if (match) setClientName(match.name);
+
+    // Auto-fill from that customer's saved default unit list, if they
+    // have one - so stable accounts don't need a fresh spreadsheet every
+    // single time. Rotating-fleet customers just won't have a default
+    // list, so nothing changes for them.
+    setLoadingDefaults(true);
+    const res = await fetch(`/api/customers/${id}/units`);
+    const body = await res.json();
+    setLoadingDefaults(false);
+
+    if (!res.ok) return;
+    const defaultUnits: ImportedUnitRow[] = (body.units ?? []).map((u: any) => ({
+      unit_number: u.unit_number,
+      location: u.location ?? undefined,
+      unit_type: u.unit_type ?? undefined,
+    }));
+
+    if (defaultUnits.length === 0) return;
+
+    if (units.length > 0) {
+      const ok = confirm(
+        `Replace the current unit list with ${match?.name ?? "this customer"}'s saved default (${defaultUnits.length} units)?`
+      );
+      if (!ok) return;
+    }
+
+    setUnits(defaultUnits);
+    setFileName(null);
   }
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -121,14 +151,14 @@ export function NewJobForm({
       {/* Customer picker */}
       <div>
         <label className="block text-xs font-medium text-steel uppercase tracking-wide mb-1">
-          Customer <span className="normal-case text-steel/70">(optional — links contact info + service reminders)</span>
+          Customer <span className="normal-case text-steel/70">(optional - links contact info + service reminders)</span>
         </label>
         <select
           value={customerId ?? ""}
           onChange={(e) => handleCustomerSelect(e.target.value)}
           className="w-full border border-line rounded px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-safety bg-white"
         >
-          <option value="">— One-off job, no customer record —</option>
+          <option value="">- One-off job, no customer record -</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -136,11 +166,17 @@ export function NewJobForm({
           ))}
         </select>
         <p className="text-xs text-steel mt-1">
-          Don't see them?{" "}
-          <a href="/admin/customers" target="_blank" rel="noopener noreferrer" className="text-safety font-semibold hover:underline">
-            Add a new customer
-          </a>{" "}
-          (opens in a new tab).
+          {loadingDefaults ? (
+            "Checking for a saved default unit list..."
+          ) : (
+            <>
+              Don't see them?{" "}
+              <Link href="/admin/customers" target="_blank" rel="noopener noreferrer" className="text-safety font-semibold hover:underline">
+                Add a new customer
+              </Link>{" "}
+              (opens in a new tab).
+            </>
+          )}
         </p>
       </div>
 
@@ -198,7 +234,7 @@ export function NewJobForm({
               </button>
             ))}
           {crew.filter((c) => c.role === "crew").length === 0 && (
-            <p className="text-sm text-steel">No crew accounts yet — add one under Crew.</p>
+            <p className="text-sm text-steel">No crew accounts yet - add one under Crew.</p>
           )}
         </div>
       </div>
@@ -206,7 +242,7 @@ export function NewJobForm({
       {/* Excel upload */}
       <div>
         <label className="block text-xs font-medium text-steel uppercase tracking-wide mb-2">
-          Unit List (Excel)
+          Unit List (Excel) <span className="normal-case text-steel/70">(skip if a default list already filled it in below)</span>
         </label>
         <div
           onClick={() => fileInputRef.current?.click()}
@@ -220,12 +256,12 @@ export function NewJobForm({
             onChange={handleFileChange}
           />
           <p className="text-sm text-steel">
-            {parsing ? "Parsing…" : fileName ? fileName : "Click to upload a spreadsheet (.xlsx, .xls, .csv)"}
+            {parsing ? "Parsing..." : fileName ? fileName : "Click to upload a spreadsheet (.xlsx, .xls, .csv)"}
           </p>
         </div>
         {fileName && !parsing && units.length === 0 && !error && (
           <p className="text-xs text-steel mt-1.5">
-            No units found in that file — that's fine for accounts where the truck list isn't known ahead
+            No units found in that file - that's fine for accounts where the truck list isn't known ahead
             of time. This job will start empty; crew add each truck as they service it.
           </p>
         )}
@@ -285,7 +321,7 @@ export function NewJobForm({
         disabled={submitting}
         className="bg-safety text-white font-semibold py-3.5 rounded-lg disabled:opacity-50 hover:opacity-90 transition"
       >
-        {submitting ? "Scheduling…" : "Schedule Job"}
+        {submitting ? "Scheduling..." : "Schedule Job"}
       </button>
     </form>
   );
