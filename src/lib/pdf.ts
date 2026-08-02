@@ -1,5 +1,5 @@
 import React from "react";
-import { Document, Page, Text, View, StyleSheet, renderToBuffer, Image } from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, renderToBuffer, Image, Svg, Polyline } from "@react-pdf/renderer";
 import type { Job, Unit, Profile } from "./types";
 import { formatWorkOrderNumber } from "./format";
 
@@ -23,16 +23,23 @@ const styles = StyleSheet.create({
   metaLabel: { fontSize: 8, color: "#3E4C59", textTransform: "uppercase", marginBottom: 2 },
   metaValue: { fontSize: 11, fontFamily: "Helvetica-Bold" },
 
-  // Compact checkbox grid — this is the main body of the PDF. Units are
+  // Compact checkbox grid - this is the main body of the PDF. Units are
   // grouped by type (Tractor, Trailer, ...) when the sheet had that info,
   // each group laid out as a dense multi-column grid rather than one row
   // per unit, so even a 150+ unit work order fits on a single page.
   groupLabel: { fontSize: 9, fontFamily: "Helvetica-Bold", marginBottom: 4 },
   groupRule: { borderBottom: "0.5 solid #E3E1DB", marginBottom: 8 },
-  grid: { flexDirection: "row", flexWrap: "wrap", marginBottom: 16 },
-  cell: { width: CELL_WIDTH, flexDirection: "row", alignItems: "center", marginBottom: 6, paddingRight: 4 },
-  checkboxOn: { width: 7, height: 7, backgroundColor: "#1F8A57", marginRight: 4 },
-  checkboxOff: { width: 7, height: 7, border: "0.75 solid #B4B2A9", marginRight: 4 },
+  columnGrid: { flexDirection: "row", marginBottom: 16 },
+  gridColumn: { width: CELL_WIDTH, flexDirection: "column", paddingRight: 4 },
+  cell: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
+  checkbox: {
+    width: 7,
+    height: 7,
+    border: "0.75 solid #B4B2A9",
+    marginRight: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   unitNumber: { fontSize: 8 },
 
   summary: { fontSize: 10, marginTop: 4, marginBottom: 12 },
@@ -52,18 +59,39 @@ interface CompletionPdfProps {
   companyLogoUrl?: string;
 }
 
-/** One checkbox + unit number cell in the grid. */
+/** One checkbox + unit number cell in the grid. The box is always outlined;
+ * a checkmark is drawn inside it when the unit's been serviced, rather
+ * than filling the box solid - reads more like an actual paper checklist. */
 function UnitCell(unit: Unit) {
   return React.createElement(
     View,
     { style: styles.cell, key: unit.id, wrap: false },
-    React.createElement(View, { style: unit.serviced ? styles.checkboxOn : styles.checkboxOff }),
+    React.createElement(
+      View,
+      { style: styles.checkbox },
+      unit.serviced
+        ? React.createElement(
+            Svg,
+            { width: 6, height: 6, viewBox: "0 0 10 10" },
+            React.createElement(Polyline, { points: "1,5 4,8 9,1", stroke: "#14181F", strokeWidth: 1.8, fill: "none" })
+          )
+        : null
+    ),
     React.createElement(Text, { style: styles.unitNumber }, unit.unit_number)
   );
 }
 
-/** A labeled group (e.g. "TRACTOR (85)") followed by its grid of unit cells. */
+/** A labeled group (e.g. "TRACTOR (85)") followed by its grid of unit cells,
+ * filled column-major - top to bottom down the first column, then the
+ * next column over - which reads more like a paper checklist than filling
+ * left-to-right across the page. */
 function UnitGroup(label: string | null, groupUnits: Unit[], key: string) {
+  const rows = Math.ceil(groupUnits.length / GRID_COLUMNS) || 1;
+  const columns: Unit[][] = [];
+  for (let i = 0; i < GRID_COLUMNS; i++) {
+    columns.push(groupUnits.slice(i * rows, (i + 1) * rows));
+  }
+
   return React.createElement(
     View,
     { key, wrap: true },
@@ -75,7 +103,13 @@ function UnitGroup(label: string | null, groupUnits: Unit[], key: string) {
           React.createElement(View, { style: styles.groupRule })
         )
       : null,
-    React.createElement(View, { style: styles.grid }, ...groupUnits.map(UnitCell))
+    React.createElement(
+      View,
+      { style: styles.columnGrid },
+      ...columns.map((colUnits, i) =>
+        React.createElement(View, { key: `col-${i}`, style: styles.gridColumn }, ...colUnits.map(UnitCell))
+      )
+    )
   );
 }
 
@@ -83,7 +117,7 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
   const servicedCount = units.filter((u) => u.serviced).length;
 
   // Group by unit_type, preserving first-seen order. If every unit shares
-  // the same (or no) type, skip the group label entirely — no point
+  // the same (or no) type, skip the group label entirely - no point
   // printing "UNITS (15)" as a header when there's nothing to distinguish.
   const groups: { label: string | null; units: Unit[] }[] = [];
   const groupIndex = new Map<string, number>();
@@ -96,6 +130,14 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
     groups[groupIndex.get(key)!].units.push(unit);
   }
   const showGroupLabels = groups.length > 1 || (groups.length === 1 && groups[0].label !== null);
+
+  // Auto-tally serviced units by type (e.g. "5-Tractors, 8-Trailers") so
+  // nobody has to count checkboxes by hand. Only named types are included -
+  // an unlabeled/mixed group wouldn't mean anything as a tally.
+  const typeBreakdown = groups
+    .filter((g) => g.label)
+    .map((g) => `${g.units.filter((u) => u.serviced).length}-${g.label}s`)
+    .join(", ");
 
   const unitsWithNotes = units.filter((u) => u.notes?.trim());
 
@@ -132,13 +174,7 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
           View,
           { style: styles.metaBlock },
           React.createElement(Text, { style: styles.metaLabel }, "Service Date"),
-          React.createElement(Text, { style: styles.metaValue }, job.scheduled_date ?? "—")
-        ),
-        React.createElement(
-          View,
-          { style: styles.metaBlock },
-          React.createElement(Text, { style: styles.metaLabel }, "Crew"),
-          React.createElement(Text, { style: styles.metaValue }, crew.map((c) => c.full_name).join(", ") || "—")
+          React.createElement(Text, { style: styles.metaValue }, job.scheduled_date ?? "-")
         ),
         React.createElement(
           View,
@@ -147,15 +183,22 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
           React.createElement(
             Text,
             { style: styles.metaValue },
-            job.completed_at ? new Date(job.completed_at).toLocaleString() : "—"
+            job.completed_at ? new Date(job.completed_at).toLocaleDateString() : "-"
           )
         )
       ),
       // Compact checkbox grid, grouped by type when meaningful
       ...groups.map((g, i) => UnitGroup(showGroupLabels ? g.label ?? "Units" : null, g.units, `group-${i}`)),
-      // Summary
-      React.createElement(Text, { style: styles.summary }, `${servicedCount} of ${units.length} units serviced`),
-      // Notes — only units that actually have one, so the common case (no
+      // Summary - includes the auto-tallied type breakdown when there's
+      // more than one named type to distinguish.
+      React.createElement(
+        Text,
+        { style: styles.summary },
+        typeBreakdown
+          ? `${servicedCount} of ${units.length} units serviced (${typeBreakdown})`
+          : `${servicedCount} of ${units.length} units serviced`
+      ),
+      // Notes - only units that actually have one, so the common case (no
       // notes) doesn't add anything to the page.
       unitsWithNotes.length > 0
         ? React.createElement(
@@ -163,7 +206,7 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
             {},
             React.createElement(Text, { style: styles.notesHeading }, "Notes"),
             ...unitsWithNotes.map((u) =>
-              React.createElement(Text, { style: styles.noteLine, key: u.id }, `${u.unit_number} — ${u.notes}`)
+              React.createElement(Text, { style: styles.noteLine, key: u.id }, `${u.unit_number} - ${u.notes}`)
             )
           )
         : null,
@@ -171,9 +214,9 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
       React.createElement(
         View,
         { style: styles.footer },
-        React.createElement(Text, {}, `Work order generated ${new Date().toLocaleString()} — ${companyName}`)
+        React.createElement(Text, {}, `Work order generated ${new Date().toLocaleDateString()} - ${companyName}`)
       ),
-      // Page number — only shows if this ever does spill past one page
+      // Page number - only shows if this ever does spill past one page
       // (e.g. an exceptionally large work order).
       React.createElement(Text, {
         style: styles.pageNumber,
