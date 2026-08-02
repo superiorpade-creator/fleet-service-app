@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { ChecklistItem } from "./ChecklistItem";
 import type { Job, Unit } from "@/lib/types";
@@ -27,11 +28,17 @@ export function JobChecklist({
 
   const isClosed = job.status === "completed";
   const servicedCount = units.filter((u) => u.serviced).length;
-  const allServiced = units.length > 0 && servicedCount === units.length;
+  const notOnSiteCount = units.filter((u) => u.not_on_site).length;
+
+  // A unit is "resolved" once it's either serviced or explicitly marked not
+  // on-site - the work order can close once every unit is resolved one way
+  // or the other, rather than requiring every single truck to be serviced.
+  const resolvedCount = servicedCount + notOnSiteCount;
+  const allResolved = units.length > 0 && resolvedCount === units.length;
 
   const progressPct = useMemo(
-    () => (units.length ? Math.round((servicedCount / units.length) * 100) : 0),
-    [servicedCount, units.length]
+    () => (units.length ? Math.round((resolvedCount / units.length) * 100) : 0),
+    [resolvedCount, units.length]
   );
 
   async function ensureInProgress() {
@@ -59,6 +66,37 @@ export function JobChecklist({
       // Roll back on failure
       setUnits((prev) => prev.map((u) => (u.id === unit.id ? { ...u, serviced: unit.serviced } : u)));
       setError("Couldn't save that check - check your connection and try again.");
+    }
+  }
+
+  // Marking a unit "not on-site" clears any serviced state on it (a truck
+  // that isn't there can't also be counted as done), and marking it back
+  // to on-site just clears the flag - crew still need to check it off
+  // separately once it's actually serviced.
+  async function toggleNotOnSite(unit: Unit) {
+    if (isClosed) return;
+
+    const nextNotOnSite = !unit.not_on_site;
+    const prevUnit = unit;
+    setUnits((prev) =>
+      prev.map((u) =>
+        u.id === unit.id ? { ...u, not_on_site: nextNotOnSite, serviced: nextNotOnSite ? false : u.serviced } : u
+      )
+    );
+    await ensureInProgress();
+
+    const { error } = await supabase
+      .from("units")
+      .update({
+        not_on_site: nextNotOnSite,
+        serviced: nextNotOnSite ? false : unit.serviced,
+        serviced_at: nextNotOnSite ? null : unit.serviced_at,
+      })
+      .eq("id", unit.id);
+
+    if (error) {
+      setUnits((prev) => prev.map((u) => (u.id === unit.id ? prevUnit : u)));
+      setError("Couldn't save that - check your connection and try again.");
     }
   }
 
@@ -144,6 +182,7 @@ export function JobChecklist({
           <div className="flex justify-between text-sm mb-1">
             <span className="font-medium">
               {servicedCount} of {units.length} serviced
+              {notOnSiteCount > 0 && ` (${notOnSiteCount} not on-site)`}
             </span>
             <span className="text-steel">{progressPct}%</span>
           </div>
@@ -155,7 +194,14 @@ export function JobChecklist({
 
       <div className="flex flex-col gap-2 mb-4">
         {units.map((unit) => (
-          <ChecklistItem key={unit.id} unit={unit} disabled={isClosed} onToggle={toggleUnit} onNotesChange={updateNotes} />
+          <ChecklistItem
+            key={unit.id}
+            unit={unit}
+            disabled={isClosed}
+            onToggle={toggleUnit}
+            onToggleNotOnSite={toggleNotOnSite}
+            onNotesChange={updateNotes}
+          />
         ))}
         {units.length === 0 && !isClosed && (
           <p className="text-sm text-steel text-center py-4 border border-dashed border-line rounded-lg">
@@ -190,16 +236,16 @@ export function JobChecklist({
       {!isClosed && (
         <button
           onClick={handleMarkComplete}
-          disabled={!allServiced || closing}
+          disabled={!allResolved || closing}
           className="w-full bg-safety text-white font-semibold py-4 rounded-lg text-base disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition"
         >
           {closing
             ? "Marking complete..."
-            : allServiced
+            : allResolved
             ? "Mark Work Order Complete"
             : units.length === 0
             ? "Add at least one truck to complete"
-            : `Check off all units to complete (${servicedCount}/${units.length})`}
+            : `Check off or mark not-on-site for all units to complete (${resolvedCount}/${units.length})`}
         </button>
       )}
 
@@ -208,9 +254,9 @@ export function JobChecklist({
         <div className="flex flex-col gap-2">
           <p className="text-sm text-steel">
             Marked complete by crew. Fix anything needed from{" "}
-            <a href={`/admin/jobs/${job.id}/edit`} className="text-safety font-semibold hover:underline">
+            <Link href={`/admin/jobs/${job.id}/edit`} className="text-safety font-semibold hover:underline">
               Edit Job
-            </a>
+            </Link>
             , then generate the PDF.
           </p>
           <button
@@ -229,12 +275,12 @@ export function JobChecklist({
 
       {/* PDF exists - anyone can download it */}
       {isClosed && pdfUrl && (
-        <a
+        <Link
           href={`/api/jobs/${job.id}/pdf`}
           className="block w-full text-center bg-ink text-white font-semibold py-4 rounded-lg hover:opacity-90 transition"
         >
           Download Completion PDF
-        </a>
+        </Link>
       )}
     </div>
   );

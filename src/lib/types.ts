@@ -38,6 +38,7 @@ export interface Unit {
   location: string | null;
   unit_type: string | null;
   serviced: boolean;
+  not_on_site: boolean; // crew marks this instead of serviced when a truck isn't there that day
   notes: string | null;
   photo_url: string | null;
   serviced_at: string | null;

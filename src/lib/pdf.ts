@@ -41,6 +41,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   unitNumber: { fontSize: 8 },
+  unitNumberMuted: { fontSize: 8, color: "#3E4C59" },
 
   summary: { fontSize: 10, marginTop: 4, marginBottom: 12 },
 
@@ -60,8 +61,8 @@ interface CompletionPdfProps {
 }
 
 /** One checkbox + unit number cell in the grid. The box is always outlined;
- * a checkmark is drawn inside it when the unit's been serviced, rather
- * than filling the box solid - reads more like an actual paper checklist. */
+ * a checkmark is drawn inside it when serviced, a dash when the truck
+ * wasn't on-site that day, or nothing at all if neither has happened yet. */
 function UnitCell(unit: Unit) {
   return React.createElement(
     View,
@@ -75,9 +76,19 @@ function UnitCell(unit: Unit) {
             { width: 6, height: 6, viewBox: "0 0 10 10" },
             React.createElement(Polyline, { points: "1,5 4,8 9,1", stroke: "#14181F", strokeWidth: 1.8, fill: "none" })
           )
+        : unit.not_on_site
+        ? React.createElement(
+            Svg,
+            { width: 6, height: 6, viewBox: "0 0 10 10" },
+            React.createElement(Polyline, { points: "1,5 9,5", stroke: "#3E4C59", strokeWidth: 1.8, fill: "none" })
+          )
         : null
     ),
-    React.createElement(Text, { style: styles.unitNumber }, unit.unit_number)
+    React.createElement(
+      Text,
+      { style: unit.not_on_site ? styles.unitNumberMuted : styles.unitNumber },
+      unit.not_on_site ? `${unit.unit_number} (N/A)` : unit.unit_number
+    )
   );
 }
 
@@ -115,6 +126,7 @@ function UnitGroup(label: string | null, groupUnits: Unit[], key: string) {
 
 function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: CompletionPdfProps) {
   const servicedCount = units.filter((u) => u.serviced).length;
+  const notOnSiteCount = units.filter((u) => u.not_on_site).length;
 
   // Group by unit_type, preserving first-seen order. If every unit shares
   // the same (or no) type, skip the group label entirely - no point
@@ -190,13 +202,15 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
       // Compact checkbox grid, grouped by type when meaningful
       ...groups.map((g, i) => UnitGroup(showGroupLabels ? g.label ?? "Units" : null, g.units, `group-${i}`)),
       // Summary - includes the auto-tallied type breakdown when there's
-      // more than one named type to distinguish.
+      // more than one named type to distinguish, plus a not-on-site count
+      // when any trucks were skipped that day.
       React.createElement(
         Text,
         { style: styles.summary },
-        typeBreakdown
+        (typeBreakdown
           ? `${servicedCount} of ${units.length} units serviced (${typeBreakdown})`
-          : `${servicedCount} of ${units.length} units serviced`
+          : `${servicedCount} of ${units.length} units serviced`) +
+          (notOnSiteCount > 0 ? ` - ${notOnSiteCount} not on-site` : "")
       ),
       // Notes - only units that actually have one, so the common case (no
       // notes) doesn't add anything to the page.
