@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import clsx from "clsx";
 import { FREQUENCY_LABEL } from "@/lib/service-status";
 import type { CustomerFrequency, CustomerWithStatus, ImportedUnitRow, ServiceStatus } from "@/lib/types";
@@ -47,6 +47,8 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
   const [customers, setCustomers] = useState(initialCustomers);
   const [form, setForm] = useState<FormState | null>(null); // null = form closed
   const [loadingUnits, setLoadingUnits] = useState(false);
+  const [uploadingUnits, setUploadingUnits] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testStatus, setTestStatus] = useState<string | null>(null);
@@ -122,6 +124,31 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
 
   function removeDefaultUnit(i: number) {
     setForm((prev) => (prev ? { ...prev, defaultUnits: prev.defaultUnits.filter((_, idx) => idx !== i) } : prev));
+  }
+
+  // Lets the admin upload the customer's fleet spreadsheet once, straight
+  // onto their profile, instead of typing every truck in by hand.
+  async function handleUploadDefaultUnits(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingUnits(true);
+    setError(null);
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch("/api/import", { method: "POST", body: formData });
+    const body = await res.json();
+    setUploadingUnits(false);
+
+    if (!res.ok) {
+      setError(body.error ?? "Couldn't parse that file.");
+      return;
+    }
+
+    setForm((prev) => (prev ? { ...prev, defaultUnits: [...prev.defaultUnits, ...body.units] } : prev));
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function handleSave() {
@@ -291,6 +318,22 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
               Their usual fleet. New jobs for this customer auto-fill from this list instead of needing a
               fresh spreadsheet every time. Remove a truck here once it's sold; doesn't affect past work orders.
             </p>
+
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-line rounded-lg p-4 text-center cursor-pointer hover:border-safety transition mb-3"
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleUploadDefaultUnits}
+              />
+              <p className="text-sm text-steel">
+                {uploadingUnits ? "Parsing..." : "Click to upload their fleet spreadsheet (.xlsx, .xls, .csv)"}
+              </p>
+            </div>
 
             {loadingUnits ? (
               <p className="text-sm text-steel">Loading...</p>
