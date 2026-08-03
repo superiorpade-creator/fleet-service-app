@@ -30,11 +30,10 @@ export function JobChecklist({
   const servicedCount = units.filter((u) => u.serviced).length;
   const notOnSiteCount = units.filter((u) => u.not_on_site).length;
 
-  // A unit is "resolved" once it's either serviced or explicitly marked not
-  // on-site - the work order can close once every unit is resolved one way
-  // or the other, rather than requiring every single truck to be serviced.
+  // Used for the progress bar only - closing no longer requires every unit
+  // to be resolved one way or another. Leaving a truck blank is fine;
+  // "Not On-Site" is just an optional way to note why it wasn't done.
   const resolvedCount = servicedCount + notOnSiteCount;
-  const allResolved = units.length > 0 && resolvedCount === units.length;
 
   const progressPct = useMemo(
     () => (units.length ? Math.round((resolvedCount / units.length) * 100) : 0),
@@ -236,16 +235,14 @@ export function JobChecklist({
       {!isClosed && (
         <button
           onClick={handleMarkComplete}
-          disabled={!allResolved || closing}
+          disabled={units.length === 0 || closing}
           className="w-full bg-safety text-white font-semibold py-4 rounded-lg text-base disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition"
         >
           {closing
             ? "Marking complete..."
-            : allResolved
-            ? "Mark Work Order Complete"
             : units.length === 0
             ? "Add at least one truck to complete"
-            : `Check off or mark not-on-site for all units to complete (${resolvedCount}/${units.length})`}
+            : "Mark Work Order Complete"}
         </button>
       )}
 
