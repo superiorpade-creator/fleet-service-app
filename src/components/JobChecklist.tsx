@@ -28,16 +28,10 @@ export function JobChecklist({
 
   const isClosed = job.status === "completed";
   const servicedCount = units.filter((u) => u.serviced).length;
-  const notOnSiteCount = units.filter((u) => u.not_on_site).length;
-
-  // Used for the progress bar only - closing no longer requires every unit
-  // to be resolved one way or another. Leaving a truck blank is fine;
-  // "Not On-Site" is just an optional way to note why it wasn't done.
-  const resolvedCount = servicedCount + notOnSiteCount;
 
   const progressPct = useMemo(
-    () => (units.length ? Math.round((resolvedCount / units.length) * 100) : 0),
-    [resolvedCount, units.length]
+    () => (units.length ? Math.round((servicedCount / units.length) * 100) : 0),
+    [servicedCount, units.length]
   );
 
   async function ensureInProgress() {
@@ -65,37 +59,6 @@ export function JobChecklist({
       // Roll back on failure
       setUnits((prev) => prev.map((u) => (u.id === unit.id ? { ...u, serviced: unit.serviced } : u)));
       setError("Couldn't save that check - check your connection and try again.");
-    }
-  }
-
-  // Marking a unit "not on-site" clears any serviced state on it (a truck
-  // that isn't there can't also be counted as done), and marking it back
-  // to on-site just clears the flag - crew still need to check it off
-  // separately once it's actually serviced.
-  async function toggleNotOnSite(unit: Unit) {
-    if (isClosed) return;
-
-    const nextNotOnSite = !unit.not_on_site;
-    const prevUnit = unit;
-    setUnits((prev) =>
-      prev.map((u) =>
-        u.id === unit.id ? { ...u, not_on_site: nextNotOnSite, serviced: nextNotOnSite ? false : u.serviced } : u
-      )
-    );
-    await ensureInProgress();
-
-    const { error } = await supabase
-      .from("units")
-      .update({
-        not_on_site: nextNotOnSite,
-        serviced: nextNotOnSite ? false : unit.serviced,
-        serviced_at: nextNotOnSite ? null : unit.serviced_at,
-      })
-      .eq("id", unit.id);
-
-    if (error) {
-      setUnits((prev) => prev.map((u) => (u.id === unit.id ? prevUnit : u)));
-      setError("Couldn't save that - check your connection and try again.");
     }
   }
 
@@ -181,7 +144,6 @@ export function JobChecklist({
           <div className="flex justify-between text-sm mb-1">
             <span className="font-medium">
               {servicedCount} of {units.length} serviced
-              {notOnSiteCount > 0 && ` (${notOnSiteCount} not on-site)`}
             </span>
             <span className="text-steel">{progressPct}%</span>
           </div>
@@ -193,14 +155,7 @@ export function JobChecklist({
 
       <div className="flex flex-col gap-2 mb-4">
         {units.map((unit) => (
-          <ChecklistItem
-            key={unit.id}
-            unit={unit}
-            disabled={isClosed}
-            onToggle={toggleUnit}
-            onToggleNotOnSite={toggleNotOnSite}
-            onNotesChange={updateNotes}
-          />
+          <ChecklistItem key={unit.id} unit={unit} disabled={isClosed} onToggle={toggleUnit} onNotesChange={updateNotes} />
         ))}
         {units.length === 0 && !isClosed && (
           <p className="text-sm text-steel text-center py-4 border border-dashed border-line rounded-lg">
