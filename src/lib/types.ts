@@ -59,6 +59,7 @@ export interface Job {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  water_recovery_amount: string | null; // crew-entered, shown on checklist and PDF
 }
 
 // Convenience shape used once a job's related rows are joined/fetched together

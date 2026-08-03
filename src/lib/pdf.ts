@@ -191,12 +191,8 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
         React.createElement(
           View,
           { style: styles.metaBlock },
-          React.createElement(Text, { style: styles.metaLabel }, "Completed"),
-          React.createElement(
-            Text,
-            { style: styles.metaValue },
-            job.completed_at ? new Date(job.completed_at).toLocaleDateString() : "-"
-          )
+          React.createElement(Text, { style: styles.metaLabel }, "Water Recovery"),
+          React.createElement(Text, { style: styles.metaValue }, job.water_recovery_amount || "-")
         )
       ),
       // Compact checkbox grid, grouped by type when meaningful
@@ -224,12 +220,6 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
             )
           )
         : null,
-      // Footer
-      React.createElement(
-        View,
-        { style: styles.footer },
-        React.createElement(Text, {}, `Work order generated ${new Date().toLocaleDateString()} - ${companyName}`)
-      ),
       // Page number - only shows if this ever does spill past one page
       // (e.g. an exceptionally large work order).
       React.createElement(Text, {

@@ -25,6 +25,7 @@ export function JobChecklist({
   const [error, setError] = useState<string | null>(null);
   const [newUnitNumber, setNewUnitNumber] = useState("");
   const [adding, setAdding] = useState(false);
+  const [waterRecovery, setWaterRecovery] = useState(job.water_recovery_amount ?? "");
 
   const isClosed = job.status === "completed";
   const servicedCount = units.filter((u) => u.serviced).length;
@@ -65,6 +66,12 @@ export function JobChecklist({
   async function updateNotes(unit: Unit, notes: string) {
     setUnits((prev) => prev.map((u) => (u.id === unit.id ? { ...u, notes } : u)));
     await supabase.from("units").update({ notes }).eq("id", unit.id);
+  }
+
+  async function handleWaterRecoveryBlur() {
+    if (isClosed) return;
+    await ensureInProgress();
+    await supabase.from("jobs").update({ water_recovery_amount: waterRecovery || null }).eq("id", job.id);
   }
 
   // For accounts where the truck list isn't known ahead of time (rotating
@@ -183,6 +190,25 @@ export function JobChecklist({
           </button>
         </form>
       )}
+
+      {/* Water recovery amount - crew types this in, shows on the PDF too */}
+      <div className="mb-6">
+        <label className="block text-xs font-medium text-steel uppercase tracking-wide mb-1">
+          Water Recovery Amount
+        </label>
+        {isClosed ? (
+          <p className="text-sm">{job.water_recovery_amount || "-"}</p>
+        ) : (
+          <input
+            type="text"
+            value={waterRecovery}
+            onChange={(e) => setWaterRecovery(e.target.value)}
+            onBlur={handleWaterRecoveryBlur}
+            placeholder="e.g. 50 gallons"
+            className="w-full border border-line rounded-lg px-3 py-3 text-base focus:outline-none focus:ring-2 focus:ring-safety"
+          />
+        )}
+      </div>
 
       {error && <p className="text-alert text-sm mb-3">{error}</p>}
 
