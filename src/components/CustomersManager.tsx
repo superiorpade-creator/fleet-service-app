@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import clsx from "clsx";
 import { FREQUENCY_LABEL } from "@/lib/service-status";
 import type { CustomerFrequency, CustomerWithStatus, ImportedUnitRow, ServiceStatus } from "@/lib/types";
@@ -427,6 +428,9 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
                 {c.status === "overdue" ? `${STATUS_LABEL[c.status]} (${c.days_overdue}d)` : STATUS_LABEL[c.status]}
               </span>
               <div className="flex gap-2">
+                <Link href={`/admin/customers/${c.id}/send`} className="text-ink text-xs font-semibold">
+                  Send PDFs
+                </Link>
                 <button onClick={() => openEdit(c)} className="text-safety text-xs font-semibold">
                   Edit
                 </button>
