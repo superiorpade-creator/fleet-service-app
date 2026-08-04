@@ -3,16 +3,17 @@ import type { ImportedUnitRow } from "./types";
 
 // Generic ID-style headers — recognized as a unit-number column, but the
 // header text itself isn't meaningful "type" info on its own (a lone
-// "Truck #" column doesn't need every row tagged "Truck #").
-const GENERIC_ID_KEYS = ["unit", "unit number", "unit #", "unit no", "truck", "truck #", "vehicle", "vehicle #"];
+// "Unit #" column doesn't need every row tagged "Unit #").
+const GENERIC_ID_KEYS = ["unit", "unit number", "unit #", "unit no", "truck #", "vehicle", "vehicle #"];
 
 // Category-style headers — real-world fleet templates often lay out several
-// parallel columns, one per vehicle type (Tractor, Trailer, Van, Reefer...),
+// parallel columns, one per vehicle type (Tractor, Trailer, Truck, Van...),
 // each listing that type's unit numbers straight down the column. When we
 // see one of these, the header text itself becomes each unit's type.
 const CATEGORY_KEYS = [
   "tractor",
   "trailer",
+  "truck",
   "van",
   "reefer",
   "flatbed",
@@ -59,8 +60,14 @@ interface HeaderMatch {
  * Scans every row of the sheet — not just row 1 — looking for the row that
  * contains unit-number column headers. Collects EVERY qualifying column,
  * not just the first, so a template with parallel "Tractor" / "Trailer" /
- * "Van" columns (rather than one single ID column) still captures every
+ * "Truck" columns (rather than one single ID column) still captures every
  * unit instead of silently dropping all but the first column.
+ *
+ * CATEGORY_KEYS is checked before GENERIC_ID_KEYS so that a bare category
+ * word (e.g. a column simply headed "Truck") is captured as a type label,
+ * not silently swallowed as an anonymous ID column. Some fleets repeat the
+ * same category header ("Truck") across several parallel columns — each
+ * one still needs to carry its type through to every unit below it.
  */
 function findHeaderRow(rows: unknown[][]): HeaderMatch | null {
   for (let r = 0; r < rows.length; r++) {
@@ -73,10 +80,10 @@ function findHeaderRow(rows: unknown[][]): HeaderMatch | null {
       const raw = row[c];
       const cell = normalizeHeader(raw);
 
-      if (GENERIC_ID_KEYS.includes(cell)) {
-        unitColumns.push({ colIndex: c });
-      } else if (CATEGORY_KEYS.includes(cell)) {
+      if (CATEGORY_KEYS.includes(cell)) {
         unitColumns.push({ colIndex: c, type: String(raw).trim() });
+      } else if (GENERIC_ID_KEYS.includes(cell)) {
+        unitColumns.push({ colIndex: c });
       }
 
       if (locationCol === -1 && LOCATION_KEYS.includes(cell)) locationCol = c;
@@ -121,11 +128,13 @@ export interface ParsedWorkbook {
  * Parses an uploaded Excel/CSV file (as an ArrayBuffer) into a clean list of
  * unit rows, plus a best-guess customer name pulled from the sheet itself.
  * Handles two real-world shapes:
- *  - "Narrow": one ID column (Unit #, Truck, Vehicle #...), optionally with
- *    separate Location/Type columns alongside it.
+ *  - "Narrow": one ID column (Unit #, Truck #, Vehicle #...), optionally
+ *    with separate Location/Type columns alongside it.
  *  - "Wide": several parallel columns, one per vehicle category (Tractor,
- *    Trailer, Van...), each listing that category's unit numbers straight
- *    down — every column is read, and the header becomes each unit's type.
+ *    Trailer, Truck, Van...), each listing that category's unit numbers
+ *    straight down — every column is read, and the header becomes each
+ *    unit's type. Fleets sometimes repeat the same category header (e.g.
+ *    "Truck") across multiple side-by-side columns; each still gets typed.
  * Either way, it searches the whole sheet for the header row rather than
  * assuming row 1, since real templates often have a letterhead/customer
  * info block above the actual unit list.
