@@ -1,29 +1,37 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
   const router = useRouter();
   const supabase = createClient();
+  const searchParams = useSearchParams();
 
-  // When someone clicks an invite (or "forgot password") email link,
-  // Supabase redirects here with #type=invite or #type=recovery in the
-  // URL and automatically signs them into a temporary session - but they
-  // don't have a password yet. Without this check, they'd land on a
-  // normal login form with no way to actually get in, which is exactly
-  // the "no option to create an account" problem.
+  // When someone clicks an invite (or "forgot password") email link, they
+  // either arrive with #type=invite / #type=recovery in the URL hash (the
+  // older implicit flow), or - since this app's Supabase client uses the
+  // PKCE flow - via our /auth/callback route, which exchanges the one-time
+  // code for a real session and forwards them here with ?type=invite or
+  // ?type=recovery in the query string instead. Either form means: show
+  // the "set your password" form, not the normal login form.
   const [mode, setMode] = useState<"login" | "set-password" | "checking">("checking");
 
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash.includes("type=invite") || hash.includes("type=recovery")) {
+    const queryType = searchParams.get("type");
+    if (
+      hash.includes("type=invite") ||
+      hash.includes("type=recovery") ||
+      queryType === "invite" ||
+      queryType === "recovery"
+    ) {
       setMode("set-password");
     } else {
       setMode("login");
     }
-  }, []);
+  }, [searchParams]);
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-ink px-4">
