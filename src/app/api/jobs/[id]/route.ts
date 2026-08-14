@@ -40,11 +40,14 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 
   if (Array.isArray(body.crew_ids)) {
-    await supabase.from("job_crew").delete().eq("job_id", params.id);
+    const { error: deleteError } = await supabase.from("job_crew").delete().eq("job_id", params.id);
+    if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
+
     if (body.crew_ids.length) {
-      await supabase
+      const { error: crewError } = await supabase
         .from("job_crew")
         .insert(body.crew_ids.map((profile_id: string) => ({ job_id: params.id, profile_id })));
+      if (crewError) return NextResponse.json({ error: crewError.message }, { status: 500 });
     }
   }
 
