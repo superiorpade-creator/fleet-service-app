@@ -31,6 +31,15 @@ export function NewJobForm({
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
 
+  // Shown lowest-to-highest by unit number so a big imported list is easy
+  // to review - each entry keeps its real index into `units` so editing
+  // and removing still target the right row after sorting for display.
+  const displayUnits = units
+    .map((unit, i) => ({ unit, i }))
+    .sort((a, b) =>
+      a.unit.unit_number.localeCompare(b.unit.unit_number, undefined, { numeric: true, sensitivity: "base" })
+    );
+
   async function handleCustomerSelect(id: string) {
     if (id === "") {
       setCustomerId(null);
@@ -283,7 +292,7 @@ export function NewJobForm({
               <span></span>
             </div>
             <div className="max-h-72 overflow-y-auto divide-y divide-line">
-              {units.map((unit, i) => (
+              {displayUnits.map(({ unit, i }) => (
                 <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 px-3 py-1.5 items-center bg-white">
                   <input
                     value={unit.unit_number}
