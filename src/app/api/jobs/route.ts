@@ -47,7 +47,10 @@ export async function POST(request: NextRequest) {
   }
 
   if (body.crew_ids?.length) {
-    await supabase.from("job_crew").insert(body.crew_ids.map((profile_id) => ({ job_id: job.id, profile_id })));
+    const { error: crewError } = await supabase
+      .from("job_crew")
+      .insert(body.crew_ids.map((profile_id) => ({ job_id: job.id, profile_id })));
+    if (crewError) return NextResponse.json({ error: crewError.message }, { status: 500 });
   }
 
   if (body.units?.length) {
