@@ -1,136 +1,125 @@
 import React from "react";
-import { Document, Page, Text, View, StyleSheet, renderToBuffer, Image, Svg, Polyline } from "@react-pdf/renderer";
-import type { Job, Unit, Profile } from "./types";
+import { Document, Page, Text, View, StyleSheet, renderToBuffer, Image } from "@react-pdf/renderer";
+import type { Job, Unit, Profile, Customer } from "./types";
 import { formatWorkOrderNumber } from "./format";
 
-const GRID_COLUMNS = 7;
-const CELL_WIDTH = `${100 / GRID_COLUMNS}%`;
+// Max rows before a type's units wrap into an additional side-by-side
+// column, so even a 50+ unit type (e.g. 50 tractors) stays on one page
+// instead of running off the bottom.
+const MAX_ROWS_PER_COLUMN = 26;
 
 const styles = StyleSheet.create({
-  page: { padding: 32, fontSize: 10, fontFamily: "Helvetica", color: "#14181F" },
+  page: { padding: 28, fontSize: 9, fontFamily: "Helvetica", color: "#14181F" },
+
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
-    borderBottom: "2 solid #14181F",
-    paddingBottom: 12,
+    alignItems: "flex-start",
+    marginBottom: 14,
   },
-  logo: { width: 120, height: 40, objectFit: "contain" },
-  title: { fontSize: 18, fontFamily: "Helvetica-Bold" },
-  metaGrid: { flexDirection: "row", marginBottom: 20, gap: 24 },
-  metaBlock: { flexDirection: "column" },
+  companyName: { fontSize: 16, fontFamily: "Helvetica-Bold" },
+  companyLine: { fontSize: 9, color: "#3E4C59", marginTop: 2 },
+  logo: { width: 100, height: 34, objectFit: "contain" },
+  dateBlock: { alignItems: "flex-end" },
+  dateLabel: { fontSize: 8, color: "#3E4C59", textTransform: "uppercase" },
+  dateValue: { fontSize: 10, borderBottom: "1 solid #14181F", paddingBottom: 2, minWidth: 90, textAlign: "right" },
+
+  metaRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 14, gap: 16 },
+  metaLeft: { flexDirection: "column", flexGrow: 1 },
   metaLabel: { fontSize: 8, color: "#3E4C59", textTransform: "uppercase", marginBottom: 2 },
-  metaValue: { fontSize: 11, fontFamily: "Helvetica-Bold" },
+  metaValue: { fontSize: 10, fontFamily: "Helvetica-Bold", borderBottom: "1 solid #14181F", paddingBottom: 2, marginBottom: 8 },
+  customerBox: { border: "1 solid #14181F", padding: "6 8", minWidth: 200 },
+  customerName: { fontSize: 10, fontFamily: "Helvetica-Bold", marginBottom: 2 },
+  customerLine: { fontSize: 9 },
 
-  // Compact checkbox grid - this is the main body of the PDF. Units are
-  // grouped by type (Tractor, Trailer, ...) when the sheet had that info,
-  // each group laid out as a dense multi-column grid rather than one row
-  // per unit, so even a 150+ unit work order fits on a single page.
-  groupLabel: { fontSize: 9, fontFamily: "Helvetica-Bold", marginBottom: 4 },
-  groupRule: { borderBottom: "0.5 solid #E3E1DB", marginBottom: 8 },
-  columnGrid: { flexDirection: "row", marginBottom: 16 },
-  gridColumn: { width: CELL_WIDTH, flexDirection: "column", paddingRight: 4 },
-  cell: { flexDirection: "row", alignItems: "center", marginBottom: 6 },
-  checkbox: {
-    width: 7,
-    height: 7,
-    border: "0.75 solid #B4B2A9",
-    marginRight: 4,
-    alignItems: "center",
-    justifyContent: "center",
+  groupLabel: { fontSize: 9, fontFamily: "Helvetica-Bold", marginBottom: 4, marginTop: 10 },
+  table: { flexDirection: "column", border: "1 solid #14181F", marginBottom: 6 },
+  tableRow: { flexDirection: "row" },
+  th: {
+    fontSize: 8,
+    fontFamily: "Helvetica-Bold",
+    padding: "3 4",
+    border: "0.5 solid #14181F",
+    textAlign: "center",
   },
-  unitNumber: { fontSize: 8 },
-  unitNumberMuted: { fontSize: 8, color: "#3E4C59" },
+  thIndex: { fontSize: 8, fontFamily: "Helvetica-Bold", padding: "3 4", border: "0.5 solid #14181F", width: 18 },
+  tdIndex: { fontSize: 8, color: "#3E4C59", padding: "3 4", border: "0.5 solid #E3E1DB", width: 18, textAlign: "center" },
+  td: { fontSize: 8, padding: "3 4", border: "0.5 solid #E3E1DB", flexGrow: 1 },
+  tdMuted: { fontSize: 8, padding: "3 4", border: "0.5 solid #E3E1DB", flexGrow: 1, color: "#3E4C59" },
+  check: { color: "#0F6E56", fontFamily: "Helvetica-Bold" },
 
-  summary: { fontSize: 10, marginTop: 4, marginBottom: 12 },
+  summary: { fontSize: 10, marginTop: 8, marginBottom: 10, fontFamily: "Helvetica-Bold" },
 
-  notesHeading: { fontSize: 9, fontFamily: "Helvetica-Bold", marginBottom: 4 },
+  notesHeading: { fontSize: 9, fontFamily: "Helvetica-Bold", marginBottom: 4, marginTop: 4 },
   noteLine: { fontSize: 8, color: "#3E4C59", marginBottom: 2 },
 
-  footer: { marginTop: 16, paddingTop: 12, borderTop: "1 solid #E3E1DB", fontSize: 9, color: "#3E4C59" },
-  pageNumber: { position: "absolute", bottom: 16, right: 32, fontSize: 8, color: "#3E4C59" },
+  pageNumber: { position: "absolute", bottom: 16, right: 28, fontSize: 8, color: "#3E4C59" },
 });
 
 interface CompletionPdfProps {
   job: Job;
   units: Unit[];
   crew: Profile[];
+  customer?: Customer | null;
   companyName: string;
   companyLogoUrl?: string;
+  companyPhone?: string;
+  companyEmail?: string;
 }
 
-/** One checkbox + unit number cell in the grid. The box is always outlined;
- * a checkmark is drawn inside it when serviced, a dash when the truck
- * wasn't on-site that day, or nothing at all if neither has happened yet. */
 function UnitCell(unit: Unit) {
   return React.createElement(
-    View,
-    { style: styles.cell, key: unit.id, wrap: false },
-    React.createElement(
-      View,
-      { style: styles.checkbox },
-      unit.serviced
-        ? React.createElement(
-            Svg,
-            { width: 6, height: 6, viewBox: "0 0 10 10" },
-            React.createElement(Polyline, { points: "1,5 4,8 9,1", stroke: "#14181F", strokeWidth: 1.8, fill: "none" })
-          )
-        : unit.not_on_site
-        ? React.createElement(
-            Svg,
-            { width: 6, height: 6, viewBox: "0 0 10 10" },
-            React.createElement(Polyline, { points: "1,5 9,5", stroke: "#3E4C59", strokeWidth: 1.8, fill: "none" })
-          )
-        : null
-    ),
-    React.createElement(
-      Text,
-      { style: unit.not_on_site ? styles.unitNumberMuted : styles.unitNumber },
-      unit.not_on_site ? `${unit.unit_number} (N/A)` : unit.unit_number
-    )
+    Text,
+    { style: unit.not_on_site ? styles.tdMuted : styles.td, key: unit.id },
+    unit.not_on_site
+      ? `${unit.unit_number} (N/A)`
+      : unit.serviced
+      ? [unit.unit_number, " ", React.createElement(Text, { style: styles.check, key: "chk" }, "\u2713")]
+      : unit.unit_number
   );
 }
 
-/** A labeled group (e.g. "TRACTOR (85)") followed by its grid of unit cells,
- * filled column-major - top to bottom down the first column, then the
- * next column over - which reads more like a paper checklist than filling
- * left-to-right across the page. */
 function UnitGroup(label: string | null, groupUnits: Unit[], key: string) {
-  const rows = Math.ceil(groupUnits.length / GRID_COLUMNS) || 1;
-  const columns: Unit[][] = [];
-  for (let i = 0; i < GRID_COLUMNS; i++) {
-    columns.push(groupUnits.slice(i * rows, (i + 1) * rows));
+  const rows = Math.min(MAX_ROWS_PER_COLUMN, groupUnits.length) || 1;
+  const numSubColumns = Math.max(1, Math.ceil(groupUnits.length / MAX_ROWS_PER_COLUMN));
+  const subColumns: Unit[][] = [];
+  for (let i = 0; i < numSubColumns; i++) {
+    subColumns.push(groupUnits.slice(i * rows, (i + 1) * rows));
+  }
+
+  const headerRow = React.createElement(
+    View,
+    { style: styles.tableRow, key: "head" },
+    React.createElement(Text, { style: styles.thIndex }, ""),
+    ...subColumns.map((_, i) => React.createElement(Text, { style: styles.th, key: `th-${i}` }, label ?? "Unit"))
+  );
+
+  const bodyRows = [];
+  for (let r = 0; r < rows; r++) {
+    bodyRows.push(
+      React.createElement(
+        View,
+        { style: styles.tableRow, key: `row-${r}`, wrap: false },
+        React.createElement(Text, { style: styles.tdIndex }, String(r + 1)),
+        ...subColumns.map((col, i) =>
+          col[r] ? UnitCell(col[r]) : React.createElement(Text, { style: styles.td, key: `blank-${i}-${r}` }, "")
+        )
+      )
+    );
   }
 
   return React.createElement(
     View,
-    { key, wrap: true },
-    label
-      ? React.createElement(
-          View,
-          {},
-          React.createElement(Text, { style: styles.groupLabel }, `${label} (${groupUnits.length})`),
-          React.createElement(View, { style: styles.groupRule })
-        )
-      : null,
-    React.createElement(
-      View,
-      { style: styles.columnGrid },
-      ...columns.map((colUnits, i) =>
-        React.createElement(View, { key: `col-${i}`, style: styles.gridColumn }, ...colUnits.map(UnitCell))
-      )
-    )
+    { key },
+    label ? React.createElement(Text, { style: styles.groupLabel }, `${label} (${groupUnits.length})`) : null,
+    React.createElement(View, { style: styles.table }, headerRow, ...bodyRows)
   );
 }
 
-function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: CompletionPdfProps) {
+function CompletionDocument({ job, units, crew, customer, companyName, companyLogoUrl, companyPhone, companyEmail }: CompletionPdfProps) {
   const servicedCount = units.filter((u) => u.serviced).length;
   const notOnSiteCount = units.filter((u) => u.not_on_site).length;
 
-  // Group by unit_type, preserving first-seen order. If every unit shares
-  // the same (or no) type, skip the group label entirely - no point
-  // printing "UNITS (15)" as a header when there's nothing to distinguish.
   const groups: { label: string | null; units: Unit[] }[] = [];
   const groupIndex = new Map<string, number>();
   for (const unit of units) {
@@ -143,15 +132,14 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
   }
   const showGroupLabels = groups.length > 1 || (groups.length === 1 && groups[0].label !== null);
 
-  // Auto-tally serviced units by type (e.g. "5-Tractors, 8-Trailers") so
-  // nobody has to count checkboxes by hand. Only named types are included -
-  // an unlabeled/mixed group wouldn't mean anything as a tally.
   const typeBreakdown = groups
     .filter((g) => g.label)
     .map((g) => `${g.units.filter((u) => u.serviced).length}-${g.label}s`)
-    .join(", ");
+    .join(" ");
 
   const unitsWithNotes = units.filter((u) => u.notes?.trim());
+
+  const today = new Date().toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
 
   return React.createElement(
     Document,
@@ -159,57 +147,57 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
     React.createElement(
       Page,
       { size: "LETTER", style: styles.page },
-      // Header
       React.createElement(
         View,
         { style: styles.header },
-        React.createElement(Text, { style: styles.title }, companyName),
-        companyLogoUrl ? React.createElement(Image, { src: companyLogoUrl, style: styles.logo }) : null
-      ),
-      // Job meta
-      React.createElement(
-        View,
-        { style: styles.metaGrid },
         React.createElement(
           View,
-          { style: styles.metaBlock },
-          React.createElement(Text, { style: styles.metaLabel }, "Work Order #"),
-          React.createElement(Text, { style: styles.metaValue }, job.job_number ? formatWorkOrderNumber(job.job_number) : "WO-PENDING")
+          {},
+          React.createElement(Text, { style: styles.companyName }, companyName),
+          companyPhone ? React.createElement(Text, { style: styles.companyLine }, `Phone ${companyPhone}`) : null,
+          companyEmail ? React.createElement(Text, { style: styles.companyLine }, `Email ${companyEmail}`) : null
         ),
+        companyLogoUrl ? React.createElement(Image, { src: companyLogoUrl, style: styles.logo }) : null,
         React.createElement(
           View,
-          { style: styles.metaBlock },
-          React.createElement(Text, { style: styles.metaLabel }, "Client"),
-          React.createElement(Text, { style: styles.metaValue }, job.client_name)
-        ),
-        React.createElement(
-          View,
-          { style: styles.metaBlock },
-          React.createElement(Text, { style: styles.metaLabel }, "Service Date"),
-          React.createElement(Text, { style: styles.metaValue }, job.scheduled_date ?? "-")
-        ),
-        React.createElement(
-          View,
-          { style: styles.metaBlock },
-          React.createElement(Text, { style: styles.metaLabel }, "Water Recovery"),
-          React.createElement(Text, { style: styles.metaValue }, job.water_recovery_amount || "-")
+          { style: styles.dateBlock },
+          React.createElement(Text, { style: styles.dateLabel }, "Date"),
+          React.createElement(Text, { style: styles.dateValue }, job.completed_at ? job.completed_at.slice(0, 10) : today)
         )
       ),
-      // Compact checkbox grid, grouped by type when meaningful
-      ...groups.map((g, i) => UnitGroup(showGroupLabels ? g.label ?? "Units" : null, g.units, `group-${i}`)),
-      // Summary - includes the auto-tallied type breakdown when there's
-      // more than one named type to distinguish, plus a not-on-site count
-      // when any trucks were skipped that day.
+      React.createElement(
+        View,
+        { style: styles.metaRow },
+        React.createElement(
+          View,
+          { style: styles.metaLeft },
+          React.createElement(Text, { style: styles.metaLabel }, "Order #"),
+          React.createElement(Text, { style: styles.metaValue }, job.job_number ? formatWorkOrderNumber(job.job_number) : "WO-PENDING"),
+          React.createElement(Text, { style: styles.metaLabel }, "Units Serviced"),
+          React.createElement(
+            Text,
+            { style: styles.metaValue },
+            typeBreakdown || `${servicedCount} of ${units.length}`
+          )
+        ),
+        React.createElement(
+          View,
+          { style: styles.customerBox },
+          React.createElement(Text, { style: styles.metaLabel }, "Customer"),
+          React.createElement(Text, { style: styles.customerName }, customer?.name ?? job.client_name),
+          customer?.address
+            ? customer.address
+                .split(",")
+                .map((line, i) => React.createElement(Text, { style: styles.customerLine, key: i }, line.trim()))
+            : null
+        )
+      ),
+      ...groups.map((g, i) => UnitGroup(showGroupLabels ? g.label ?? "Unit" : null, g.units, `group-${i}`)),
       React.createElement(
         Text,
         { style: styles.summary },
-        (typeBreakdown
-          ? `${servicedCount} of ${units.length} units serviced (${typeBreakdown})`
-          : `${servicedCount} of ${units.length} units serviced`) +
-          (notOnSiteCount > 0 ? ` - ${notOnSiteCount} not on-site` : "")
+        `${servicedCount} of ${units.length} units serviced` + (notOnSiteCount > 0 ? ` - ${notOnSiteCount} not on-site` : "")
       ),
-      // Notes - only units that actually have one, so the common case (no
-      // notes) doesn't add anything to the page.
       unitsWithNotes.length > 0
         ? React.createElement(
             View,
@@ -220,8 +208,6 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
             )
           )
         : null,
-      // Page number - only shows if this ever does spill past one page
-      // (e.g. an exceptionally large work order).
       React.createElement(Text, {
         style: styles.pageNumber,
         fixed: true,
@@ -232,10 +218,6 @@ function CompletionDocument({ job, units, crew, companyName, companyLogoUrl }: C
   );
 }
 
-/**
- * Renders the completion PDF for a closed-out job to a Buffer, ready to
- * upload to Supabase Storage or stream back as a download.
- */
 export async function renderCompletionPdf(props: CompletionPdfProps): Promise<Buffer> {
   return renderToBuffer(CompletionDocument(props) as any);
 }
