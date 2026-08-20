@@ -34,6 +34,7 @@ export function EditJobForm({
       serviced: u.serviced,
     }))
   );
+  const [unitSearch, setUnitSearch] = useState("");
   const [pdfUrl, setPdfUrl] = useState(job.pdf_url);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -41,6 +42,14 @@ export function EditJobForm({
   const [error, setError] = useState<string | null>(null);
 
   const isCompleted = job.status === "completed";
+
+  // Pair each unit with its real index in `units` before filtering, so the
+  // existing update/toggle/remove handlers (which operate on array index)
+  // still target the right row even when the visible list is narrowed down
+  // by a search term.
+  const visibleUnits = units
+    .map((unit, i) => ({ unit, i }))
+    .filter(({ unit }) => unit.unit_number.toLowerCase().includes(unitSearch.trim().toLowerCase()));
 
   function toggleCrew(id: string) {
     setCrewIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
@@ -254,11 +263,18 @@ export function EditJobForm({
       </div>
 
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-xs font-medium text-steel uppercase tracking-wide">
+        <div className="flex items-center justify-between mb-2 gap-3">
+          <label className="text-xs font-medium text-steel uppercase tracking-wide shrink-0">
             Units ({units.length})
           </label>
-          <button type="button" onClick={addUnit} className="text-safety text-sm font-semibold">
+          <input
+            type="text"
+            value={unitSearch}
+            onChange={(e) => setUnitSearch(e.target.value)}
+            placeholder="Search unit #..."
+            className="flex-1 max-w-[200px] border border-line rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-safety"
+          />
+          <button type="button" onClick={addUnit} className="text-safety text-sm font-semibold shrink-0">
             + Add Unit
           </button>
         </div>
@@ -271,7 +287,12 @@ export function EditJobForm({
             <span></span>
           </div>
           <div className="max-h-80 overflow-y-auto divide-y divide-line">
-            {units.map((unit, i) => (
+            {visibleUnits.length === 0 && (
+              <div className="px-3 py-4 text-sm text-steel text-center">
+                No units match "{unitSearch}".
+              </div>
+            )}
+            {visibleUnits.map(({ unit, i }) => (
               <div key={i} className="grid grid-cols-[auto_1fr_1fr_1fr_auto] gap-2 px-3 py-1.5 items-center bg-white">
                 <button
                   type="button"
@@ -331,6 +352,7 @@ export function EditJobForm({
         )}
 
         {pdfUrl && (
+          
           <a
             href={`/api/jobs/${job.id}/pdf`}
             target="_blank"
