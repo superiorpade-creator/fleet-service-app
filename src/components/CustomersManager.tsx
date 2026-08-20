@@ -54,6 +54,14 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
   const [error, setError] = useState<string | null>(null);
   const [testStatus, setTestStatus] = useState<string | null>(null);
   const [testSending, setTestSending] = useState(false);
+  const [defaultUnitSearch, setDefaultUnitSearch] = useState("");
+
+  // Pair each default unit with its real index before filtering, so the
+  // existing update/remove handlers (which operate on array index) still
+  // target the right row even when the visible list is narrowed by search.
+  const visibleDefaultUnits = (form?.defaultUnits ?? [])
+    .map((unit, i) => ({ unit, i }))
+    .filter(({ unit }) => unit.unit_number.toLowerCase().includes(defaultUnitSearch.trim().toLowerCase()));
 
   async function handleSendTestAlert() {
     setTestSending(true);
@@ -78,6 +86,7 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
   function openNew() {
     setForm(EMPTY_FORM);
     setError(null);
+    setDefaultUnitSearch("");
   }
 
   async function openEdit(c: CustomerWithStatus) {
@@ -93,6 +102,7 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
       defaultUnits: [],
     });
     setError(null);
+    setDefaultUnitSearch("");
     setLoadingUnits(true);
 
     const res = await fetch(`/api/customers/${c.id}/units`);
@@ -307,11 +317,18 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-medium text-steel uppercase tracking-wide">
+            <div className="flex items-center justify-between mb-1 gap-3">
+              <label className="text-xs font-medium text-steel uppercase tracking-wide shrink-0">
                 Default Units ({form.defaultUnits.length})
               </label>
-              <button type="button" onClick={addDefaultUnit} className="text-safety text-sm font-semibold">
+              <input
+                type="text"
+                value={defaultUnitSearch}
+                onChange={(e) => setDefaultUnitSearch(e.target.value)}
+                placeholder="Search unit #..."
+                className="flex-1 max-w-[200px] border border-line rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-safety"
+              />
+              <button type="button" onClick={addDefaultUnit} className="text-safety text-sm font-semibold shrink-0">
                 + Add Unit
               </button>
             </div>
@@ -347,7 +364,12 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
                   <span></span>
                 </div>
                 <div className="max-h-56 overflow-y-auto divide-y divide-line">
-                  {form.defaultUnits.map((unit, i) => (
+                  {visibleDefaultUnits.length === 0 && form.defaultUnits.length > 0 && (
+                    <p className="text-xs text-steel px-3 py-4 text-center">
+                      No units match "{defaultUnitSearch}".
+                    </p>
+                  )}
+                  {visibleDefaultUnits.map(({ unit, i }) => (
                     <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 px-3 py-1.5 items-center bg-white">
                       <input
                         value={unit.unit_number}
