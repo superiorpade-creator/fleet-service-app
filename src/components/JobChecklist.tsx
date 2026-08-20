@@ -35,6 +35,20 @@ export function JobChecklist({
     [servicedCount, units.length]
   );
 
+  // Displayed lowest-to-highest by unit number so a 50+ truck job is easy
+  // to scan through - a "natural" sort (numeric: true) so mixed
+  // number/letter unit numbers like "T20" and "T100" land in the order a
+  // person would expect, not plain-text order where "T100" sorts before
+  // "T20". This only affects what order they're rendered in - toggling,
+  // adding, and everything else still works off each unit's own id.
+  const sortedUnits = useMemo(
+    () =>
+      [...units].sort((a, b) =>
+        a.unit_number.localeCompare(b.unit_number, undefined, { numeric: true, sensitivity: "base" })
+      ),
+    [units]
+  );
+
   async function ensureInProgress() {
     if (job.status === "scheduled") {
       await supabase.from("jobs").update({ status: "in_progress", started_at: new Date().toISOString() }).eq("id", job.id);
@@ -161,7 +175,7 @@ export function JobChecklist({
       )}
 
       <div className="flex flex-col gap-2 mb-4">
-        {units.map((unit) => (
+        {sortedUnits.map((unit) => (
           <ChecklistItem key={unit.id} unit={unit} disabled={isClosed} onToggle={toggleUnit} onNotesChange={updateNotes} />
         ))}
         {units.length === 0 && !isClosed && (
