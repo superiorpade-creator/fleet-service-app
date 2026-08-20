@@ -1,11 +1,8 @@
 import React from "react";
-import { Document, Page, Text, View, StyleSheet, renderToBuffer, Image } from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, renderToBuffer, Image, Svg, Polyline } from "@react-pdf/renderer";
 import type { Job, Unit, Profile, Customer } from "./types";
 import { formatWorkOrderNumber } from "./format";
 
-// Max rows before a type's units wrap into an additional side-by-side
-// column, so even a 50+ unit type (e.g. 50 tractors) stays on one page
-// instead of running off the bottom.
 const MAX_ROWS_PER_COLUMN = 26;
 
 const styles = StyleSheet.create({
@@ -41,12 +38,30 @@ const styles = StyleSheet.create({
     padding: "3 4",
     border: "0.5 solid #14181F",
     textAlign: "center",
+    flexGrow: 1,
+    flexBasis: 0,
   },
-  thIndex: { fontSize: 8, fontFamily: "Helvetica-Bold", padding: "3 4", border: "0.5 solid #14181F", width: 18 },
-  tdIndex: { fontSize: 8, color: "#3E4C59", padding: "3 4", border: "0.5 solid #E3E1DB", width: 18, textAlign: "center" },
-  td: { fontSize: 8, padding: "3 4", border: "0.5 solid #E3E1DB", flexGrow: 1 },
-  tdMuted: { fontSize: 8, padding: "3 4", border: "0.5 solid #E3E1DB", flexGrow: 1, color: "#3E4C59" },
-  check: { color: "#0F6E56", fontFamily: "Helvetica-Bold" },
+  thIndex: { fontSize: 8, fontFamily: "Helvetica-Bold", padding: "3 4", border: "0.5 solid #14181F", width: 18, flexShrink: 0 },
+  tdIndex: {
+    fontSize: 8,
+    color: "#3E4C59",
+    padding: "3 4",
+    border: "0.5 solid #E3E1DB",
+    width: 18,
+    flexShrink: 0,
+    textAlign: "center",
+  },
+  td: {
+    flexGrow: 1,
+    flexBasis: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: "3 4",
+    border: "0.5 solid #E3E1DB",
+  },
+  unitNumber: { fontSize: 8 },
+  unitNumberMuted: { fontSize: 8, color: "#3E4C59" },
+  checkbox: { width: 7, height: 7, marginLeft: 4 },
 
   summary: { fontSize: 10, marginTop: 8, marginBottom: 10, fontFamily: "Helvetica-Bold" },
 
@@ -69,13 +84,20 @@ interface CompletionPdfProps {
 
 function UnitCell(unit: Unit) {
   return React.createElement(
-    Text,
-    { style: unit.not_on_site ? styles.tdMuted : styles.td, key: unit.id },
-    unit.not_on_site
-      ? `${unit.unit_number} (N/A)`
-      : unit.serviced
-      ? [unit.unit_number, " ", React.createElement(Text, { style: styles.check, key: "chk" }, "\u2713")]
-      : unit.unit_number
+    View,
+    { style: styles.td, key: unit.id },
+    React.createElement(
+      Text,
+      { style: unit.not_on_site ? styles.unitNumberMuted : styles.unitNumber },
+      unit.not_on_site ? `${unit.unit_number} (N/A)` : unit.unit_number
+    ),
+    unit.serviced
+      ? React.createElement(
+          Svg,
+          { style: styles.checkbox, viewBox: "0 0 10 10" },
+          React.createElement(Polyline, { points: "1,5 4,8 9,1", stroke: "#0F6E56", strokeWidth: 1.8, fill: "none" })
+        )
+      : null
   );
 }
 
@@ -102,7 +124,7 @@ function UnitGroup(label: string | null, groupUnits: Unit[], key: string) {
         { style: styles.tableRow, key: `row-${r}`, wrap: false },
         React.createElement(Text, { style: styles.tdIndex }, String(r + 1)),
         ...subColumns.map((col, i) =>
-          col[r] ? UnitCell(col[r]) : React.createElement(Text, { style: styles.td, key: `blank-${i}-${r}` }, "")
+          col[r] ? UnitCell(col[r]) : React.createElement(View, { style: styles.td, key: `blank-${i}-${r}` })
         )
       )
     );
