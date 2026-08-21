@@ -1,22 +1,18 @@
 "use client";
-
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import clsx from "clsx";
-
 export function Navbar({ role }: { role: "admin" | "crew" }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
-
   async function handleSignOut() {
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
   }
-
   const links = [
     { href: "/calendar", label: "Calendar" },
     ...(role === "admin"
@@ -30,9 +26,8 @@ export function Navbar({ role }: { role: "admin" | "crew" }) {
         ]
       : []),
   ];
-
   return (
-    <header className="bg-ink text-paper sticky top-0 z-10">
+    <header className="bg-white text-ink sticky top-0 z-10 border-b border-line">
       <div className="max-w-5xl mx-auto px-4 flex items-center justify-between h-14">
         <Image src="/logo.png" alt="Superior Wash" width={200} height={60} className="h-9 w-auto" priority />
         <nav className="flex items-center gap-1">
@@ -41,8 +36,8 @@ export function Navbar({ role }: { role: "admin" | "crew" }) {
               key={link.href}
               href={link.href}
               className={clsx(
-                "px-3 py-2 text-sm rounded transition",
-                pathname.startsWith(link.href) ? "bg-safety text-white" : "text-paper/70 hover:text-paper"
+                "px-3 py-2 text-sm rounded transition font-medium",
+                pathname.startsWith(link.href) ? "bg-brand text-white" : "text-steel hover:text-ink"
               )}
             >
               {link.label}
@@ -50,7 +45,7 @@ export function Navbar({ role }: { role: "admin" | "crew" }) {
           ))}
           <button
             onClick={handleSignOut}
-            className="px-3 py-2 text-sm rounded text-paper/70 hover:text-paper transition"
+            className="px-3 py-2 text-sm rounded text-steel hover:text-ink transition font-medium"
           >
             Sign Out
           </button>

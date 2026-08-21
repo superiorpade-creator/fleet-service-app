@@ -12,6 +12,7 @@ const config: Config = {
         go: "#1F8A57",       // green — serviced / completed
         alert: "#D64545",    // red — not serviced / destructive
         line: "#E3E1DB",     // hairline borders on paper
+        brand: "#0F4870",    // logo blue — header background, active nav tab
       },
       fontFamily: {
         display: ["var(--font-display)", "system-ui", "sans-serif"],
