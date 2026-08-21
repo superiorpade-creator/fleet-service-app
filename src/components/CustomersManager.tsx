@@ -433,7 +433,7 @@ export function CustomersManager({ initialCustomers }: { initialCustomers: Custo
         <div className="divide-y divide-line">
           {customers.map((c) => (
             <div key={c.id} className="grid grid-cols-[1.3fr_1.3fr_0.9fr_1fr_0.9fr_auto] gap-2 px-3 py-3 items-center bg-white text-sm">
-              <span className="font-medium truncate">{c.name}</span>
+              <Link href={`/admin/customers/${c.id}`} className="font-medium truncate text-safety hover:underline">{c.name}</Link>
               <span className="text-steel text-xs truncate">
                 {c.contact_name || c.phone || c.email ? (
                   <>
