@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import clsx from "clsx";
@@ -33,7 +34,7 @@ export function Navbar({ role }: { role: "admin" | "crew" }) {
   return (
     <header className="bg-ink text-paper sticky top-0 z-10">
       <div className="max-w-5xl mx-auto px-4 flex items-center justify-between h-14">
-        <span className="font-display font-bold tracking-tight text-lg">FLEET OPS</span>
+        <Image src="/logo.png" alt="Superior Wash" width={200} height={60} className="h-9 w-auto" priority />
         <nav className="flex items-center gap-1">
           {links.map((link) => (
             <Link
