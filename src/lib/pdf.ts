@@ -3,7 +3,29 @@ import { Document, Page, Text, View, StyleSheet, renderToBuffer, Image, Svg, Pol
 import type { Job, Unit, Profile, Customer } from "./types";
 import { formatWorkOrderNumber } from "./format";
 
-const MAX_ROWS_PER_COLUMN = 26;
+// Roughly how much vertical space (in points) is left on a Letter page for
+// the type-group tables after the header, meta row, and summary/footer
+// take their share. Used to figure out how many rows each group's table
+// can afford before it needs to wrap into another side-by-side column.
+const TABLE_BUDGET_HEIGHT = 560;
+const ROW_HEIGHT = 16.6; // approx height of one table row at this font size
+const GROUP_OVERHEAD = 43; // approx height of a group's label + header row
+const MIN_ROWS_PER_COLUMN = 8; // never so short a column looks silly
+const MAX_ROWS_PER_COLUMN = 30; // never so tall a single group overflows alone
+
+/**
+ * How many rows each type-group's table gets before wrapping into an
+ * additional side-by-side column - split evenly across however many
+ * groups are actually on this work order, so a job with one big group
+ * (e.g. 82 vans) and a job with several (50 tractors + 60 trailers) both
+ * come out fitting on one page instead of using one fixed row count that
+ * only works for the first case.
+ */
+function rowsPerColumnFor(numGroups: number): number {
+  const perGroupBudget = TABLE_BUDGET_HEIGHT / Math.max(1, numGroups);
+  const rows = Math.floor((perGroupBudget - GROUP_OVERHEAD) / ROW_HEIGHT);
+  return Math.max(MIN_ROWS_PER_COLUMN, Math.min(MAX_ROWS_PER_COLUMN, rows));
+}
 
 const styles = StyleSheet.create({
   page: { padding: 28, fontSize: 9, fontFamily: "Helvetica", color: "#14181F" },
@@ -101,9 +123,9 @@ function UnitCell(unit: Unit) {
   );
 }
 
-function UnitGroup(label: string | null, groupUnits: Unit[], key: string) {
-  const rows = Math.min(MAX_ROWS_PER_COLUMN, groupUnits.length) || 1;
-  const numSubColumns = Math.max(1, Math.ceil(groupUnits.length / MAX_ROWS_PER_COLUMN));
+function UnitGroup(label: string | null, groupUnits: Unit[], key: string, rowsPerColumn: number) {
+  const rows = Math.min(rowsPerColumn, groupUnits.length) || 1;
+  const numSubColumns = Math.max(1, Math.ceil(groupUnits.length / rowsPerColumn));
   const subColumns: Unit[][] = [];
   for (let i = 0; i < numSubColumns; i++) {
     subColumns.push(groupUnits.slice(i * rows, (i + 1) * rows));
@@ -153,6 +175,7 @@ function CompletionDocument({ job, units, crew, customer, companyName, companyLo
     groups[groupIndex.get(key)!].units.push(unit);
   }
   const showGroupLabels = groups.length > 1 || (groups.length === 1 && groups[0].label !== null);
+  const rowsPerColumn = rowsPerColumnFor(groups.length);
 
   const typeBreakdown = groups
     .filter((g) => g.label)
@@ -214,7 +237,9 @@ function CompletionDocument({ job, units, crew, customer, companyName, companyLo
             : null
         )
       ),
-      ...groups.map((g, i) => UnitGroup(showGroupLabels ? g.label ?? "Unit" : null, g.units, `group-${i}`)),
+      ...groups.map((g, i) =>
+        UnitGroup(showGroupLabels ? g.label ?? "Unit" : null, g.units, `group-${i}`, rowsPerColumn)
+      ),
       React.createElement(
         Text,
         { style: styles.summary },
