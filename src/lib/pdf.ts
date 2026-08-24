@@ -240,11 +240,6 @@ function CompletionDocument({ job, units, crew, customer, companyName, companyLo
       ...groups.map((g, i) =>
         UnitGroup(showGroupLabels ? g.label ?? "Unit" : null, g.units, `group-${i}`, rowsPerColumn)
       ),
-      React.createElement(
-        Text,
-        { style: styles.summary },
-        `${servicedCount} of ${units.length} units serviced` + (notOnSiteCount > 0 ? ` - ${notOnSiteCount} not on-site` : "")
-      ),
       unitsWithNotes.length > 0
         ? React.createElement(
             View,
