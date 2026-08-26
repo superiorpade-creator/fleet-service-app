@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   startOfMonth,
   endOfMonth,
@@ -15,7 +15,7 @@ import {
   subMonths,
 } from "date-fns";
 import clsx from "clsx";
-import type { Job } from "@/lib/types";
+import type { Job, Profile } from "@/lib/types";
 
 const STATUS_DOT = {
   scheduled: "bg-steel",
@@ -23,16 +23,22 @@ const STATUS_DOT = {
   completed: "bg-go",
 };
 
-export function CalendarGrid({ monthDate, jobs }: { monthDate: Date; jobs: Job[] }) {
+export function CalendarGrid({
+  monthDate,
+  jobs,
+  isAdmin,
+  crewList,
+  selectedCrewId,
+}: {
+  monthDate: Date;
+  jobs: Job[];
+  isAdmin?: boolean;
+  crewList?: Profile[];
+  selectedCrewId?: string | null;
+}) {
   const searchParams = useSearchParams();
+  const router = useRouter();
 
-  // "Today" depends on the viewer's local timezone, which the server can't
-  // know in advance (Vercel renders in UTC, browsers render in whatever
-  // timezone the person is actually in). Computing it during render on both
-  // sides can disagree near midnight UTC, which breaks hydration. Instead,
-  // the server renders with no day highlighted, and the browser fills in
-  // today's date itself right after the page loads - a normal post-mount
-  // state update, not part of hydration, so it can never mismatch.
   const [todayKey, setTodayKey] = useState<string | null>(null);
   useEffect(() => {
     setTodayKey(format(new Date(), "yyyy-MM-dd"));
@@ -55,24 +61,48 @@ export function CalendarGrid({ monthDate, jobs }: { monthDate: Date; jobs: Job[]
     return `/calendar?${params.toString()}`;
   }
 
+  function handleCrewChange(crewId: string) {
+    const params = new URLSearchParams(searchParams);
+    if (crewId) params.set("crew", crewId);
+    else params.delete("crew");
+    router.push(`/calendar?${params.toString()}`);
+  }
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <h1 className="font-display text-2xl font-bold">{format(monthDate, "MMMM yyyy")}</h1>
-        <div className="flex gap-2">
-          <a
+        <div className="flex gap-2 items-center flex-wrap">
+          {isAdmin && crewList && crewList.length > 0 && (
+            <select
+              value={selectedCrewId ?? ""}
+              onChange={(e) => handleCrewChange(e.target.value)}
+              className="px-3 py-2 border border-line rounded text-sm bg-white focus:outline-none focus:ring-2 focus:ring-safety"
+            >
+              <option value="">All Crew</option>
+              {crewList.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.full_name}
+                </option>
+              ))}
+            </select>
+          )}
+          
+            <a
             href={monthHref(subMonths(monthDate, 1))}
             className="px-3 py-2 border border-line rounded hover:bg-white transition text-sm"
           >
             &larr; Prev
           </a>
-          <a
+          
+            <a
             href={monthHref(new Date())}
             className="px-3 py-2 border border-line rounded hover:bg-white transition text-sm"
           >
             Today
           </a>
-          <a
+          
+            <a
             href={monthHref(addMonths(monthDate, 1))}
             className="px-3 py-2 border border-line rounded hover:bg-white transition text-sm"
           >
