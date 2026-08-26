@@ -8,7 +8,7 @@ import { formatWorkOrderNumber } from "./format";
 // take their share. Used to figure out how many rows each group's table
 // can afford before it needs to wrap into another side-by-side column.
 const TABLE_BUDGET_HEIGHT = 560;
-const ROW_HEIGHT = 16.6; // approx height of one table row at this font size
+const ROW_HEIGHT = 22; // approx height of one table row at this font size
 const GROUP_OVERHEAD = 43; // approx height of a group's label + header row
 const MIN_ROWS_PER_COLUMN = 8; // never so short a column looks silly
 const MAX_ROWS_PER_COLUMN = 30; // never so tall a single group overflows alone
@@ -81,8 +81,8 @@ const styles = StyleSheet.create({
     padding: "3 4",
     border: "0.5 solid #E3E1DB",
   },
-  unitNumber: { fontSize: 8 },
-  unitNumberMuted: { fontSize: 8, color: "#3E4C59" },
+  unitNumber: { fontSize: 12 },
+  unitNumberMuted: { fontSize: 12, color: "#3E4C59" },
   checkbox: { width: 7, height: 7, marginLeft: 4 },
 
   summary: { fontSize: 10, marginTop: 8, marginBottom: 10, fontFamily: "Helvetica-Bold" },
