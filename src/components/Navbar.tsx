@@ -3,6 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { InstallAppButton } from "./InstallAppButton";
 import clsx from "clsx";
 export function Navbar({ role }: { role: "admin" | "crew" }) {
   const pathname = usePathname();
@@ -43,6 +44,7 @@ export function Navbar({ role }: { role: "admin" | "crew" }) {
               {link.label}
             </Link>
           ))}
+          <InstallAppButton />
           <button
             onClick={handleSignOut}
             className="px-3 py-2 text-sm rounded text-steel hover:text-ink transition font-medium"
