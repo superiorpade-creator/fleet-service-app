@@ -1,15 +1,20 @@
 "use client";
 
 import { useEffect } from "react";
+import { captureInstallPrompt } from "@/lib/pwaInstall";
 
 export function ServiceWorkerRegister() {
   useEffect(() => {
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {
-        // Not fatal - the app works fine without it, this just means it
-        // won't be considered "installable" on browsers that require one.
-      });
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
     }
+
+    function handleBeforeInstallPrompt(e: Event) {
+      e.preventDefault();
+      captureInstallPrompt(e as any);
+    }
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
   }, []);
 
   return null;
