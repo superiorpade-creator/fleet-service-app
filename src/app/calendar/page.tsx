@@ -93,9 +93,9 @@ export default async function CalendarPage({
       <ServiceReminders customers={reminderCustomers} />
       <CalendarMonthNav monthDate={monthDate} />
       <div className="flex flex-col gap-8 pb-24">
-        <CalendarGrid monthDate={monthDate} jobs={allJobs} label="All Crew" />
+        <CalendarGrid monthDate={monthDate} jobs={allJobs} label="All Crew" draggable />
         {crewList.map((c) => (
-          <CalendarGrid key={c.id} monthDate={monthDate} jobs={jobsByCrew.get(c.id) ?? []} label={c.full_name} />
+          <CalendarGrid key={c.id} monthDate={monthDate} jobs={jobsByCrew.get(c.id) ?? []} label={c.full_name} draggable />
         ))}
       </div>
     </>
