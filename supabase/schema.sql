@@ -177,3 +177,18 @@ create policy "crew can update units on their jobs"
 -- Create these in the Supabase dashboard under Storage, or via the CLI:
 --   supabase storage create job-photos --public
 --   supabase storage create completion-pdfs --public
+
+-- crew can view (read-only) the customer record for a job they're
+-- actually assigned to - needed so the job detail page can show them the
+-- site address. Still no write access, and the app itself only ever
+-- displays the address field to crew (never phone/email/notes), even
+-- though this policy technically permits reading the whole row.
+create policy "crew can view customer for their assigned jobs"
+  on customers for select using (
+    exists (
+      select 1 from jobs
+      join job_crew on job_crew.job_id = jobs.id
+      where jobs.customer_id = customers.id
+        and job_crew.profile_id = auth.uid()
+    )
+  );
