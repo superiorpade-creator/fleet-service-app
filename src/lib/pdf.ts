@@ -231,7 +231,9 @@ function CompletionDocument({ job, units, crew, customer, companyName, companyLo
             Text,
             { style: styles.metaValue },
             typeBreakdown || `${servicedCount} of ${units.length}`
-          )
+          ),
+          job.water_recovery_amount ? React.createElement(Text, { style: styles.metaLabel }, "Water Recovery") : null,
+          job.water_recovery_amount ? React.createElement(Text, { style: styles.metaValue }, job.water_recovery_amount) : null,
         ),
         React.createElement(
           View,
