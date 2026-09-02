@@ -124,8 +124,16 @@ function UnitCell(unit: Unit) {
 }
 
 function UnitGroup(label: string | null, groupUnits: Unit[], key: string, rowsPerColumn: number) {
-  const rows = Math.min(rowsPerColumn, groupUnits.length) || 1;
-  const numSubColumns = Math.max(1, Math.ceil(groupUnits.length / rowsPerColumn));
+  // Cap columns so each one stays wide enough to fit a unit number plus
+  // checkmark legibly - without this, a very large single-type group (a
+  // hundred-plus units) would wrap into so many skinny columns that the
+  // text overflows into neighboring cells. If that cap means the table is
+  // taller than its usual page-fitting budget, that's the right tradeoff:
+  // it spills onto an extra page rather than becoming unreadable.
+  const MAX_COLUMNS = 7;
+  const desiredColumns = Math.max(1, Math.ceil(groupUnits.length / rowsPerColumn));
+  const numSubColumns = Math.min(desiredColumns, MAX_COLUMNS);
+  const rows = Math.max(1, Math.ceil(groupUnits.length / numSubColumns));
   const subColumns: Unit[][] = [];
   for (let i = 0; i < numSubColumns; i++) {
     subColumns.push(groupUnits.slice(i * rows, (i + 1) * rows));
