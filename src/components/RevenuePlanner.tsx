@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import clsx from "clsx";
+import { WeekWorkOrdersDialog, type CustomerOption } from "./WeekWorkOrdersDialog";
 
 export interface RevenueRow {
   id: string;
@@ -9,6 +10,7 @@ export interface RevenueRow {
   amount: number;
   scheduled_date: string; // YYYY-MM-DD
   series_id: string;
+  job_id: string | null; // the work order created from this visit, if any
 }
 
 const WEEKLY_GOAL = 11000;
@@ -81,13 +83,24 @@ const REPEAT_OPTIONS = [
   { value: "4", label: "Every 4 weeks" },
 ];
 
-export function RevenuePlanner({ initialRows }: { initialRows: RevenueRow[] }) {
+export function RevenuePlanner({
+  initialRows,
+  customers,
+  initialLinks,
+}: {
+  initialRows: RevenueRow[];
+  customers: CustomerOption[];
+  initialLinks: Record<string, string | null>;
+}) {
   const [rows, setRows] = useState<RevenueRow[]>(initialRows);
   const [repeatSeries, setRepeatSeries] = useState(true);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<RevenueRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [links, setLinks] = useState<Record<string, string | null>>(initialLinks);
+  const [dialogWeek, setDialogWeek] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   // add-account form
   const [newName, setNewName] = useState("");
@@ -296,6 +309,8 @@ export function RevenuePlanner({ initialRows }: { initialRows: RevenueRow[] }) {
     : [];
   const selectedSeries = selected ? rows.filter((r) => r.series_id === selected.series_id) : [];
   const weekKeys = Object.keys(weekTotals).sort();
+  const pendingCount = (wk: string) =>
+    rows.filter((r) => !r.job_id && weekStartKey(r.scheduled_date) === wk).length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -334,6 +349,7 @@ export function RevenuePlanner({ initialRows }: { initialRows: RevenueRow[] }) {
       </p>
 
       {error && <p className="text-alert text-sm">{error}</p>}
+      {notice && <p className="text-go text-sm">{notice}</p>}
 
       {/* add an account */}
       <form
@@ -496,6 +512,7 @@ export function RevenuePlanner({ initialRows }: { initialRows: RevenueRow[] }) {
                                   chipColors(r.name, r.amount)
                                 )}
                               >
+                                {r.job_id && <span className="inline-block w-1.5 h-1.5 rounded-full bg-go mr-1 align-middle" />}
                                 {r.name} <span className="font-bold">{fmtMoney(r.amount)}</span>
                               </div>
                             ))}
@@ -509,6 +526,15 @@ export function RevenuePlanner({ initialRows }: { initialRows: RevenueRow[] }) {
                             <span className={clsx("block text-[10px] font-medium", diff >= 0 ? "text-go" : "text-alert")}>
                               {(diff >= 0 ? "+" : "") + fmtMoney(Math.round(diff))} vs goal
                             </span>
+                            {pendingCount(wk) > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setDialogWeek(wk)}
+                                className="mt-1 text-[10px] font-semibold text-brand border border-brand rounded px-1.5 py-0.5 hover:bg-paper"
+                              >
+                                Create work orders ({pendingCount(wk)})
+                              </button>
+                            )}
                           </>
                         ) : null}
                       </td>
@@ -590,6 +616,11 @@ export function RevenuePlanner({ initialRows }: { initialRows: RevenueRow[] }) {
             <p className="text-sm text-steel mb-4">
               {fmtMoney(selected.amount)} on {fmtShort(selected.scheduled_date)}
             </p>
+            {selected.job_id && (
+              <p className="text-xs text-steel mb-3">
+                This visit already has a work order. Removing it here does not delete the work order.
+              </p>
+            )}
             <div className="flex flex-col gap-2">
               <button
                 disabled={busy}
@@ -625,6 +656,25 @@ export function RevenuePlanner({ initialRows }: { initialRows: RevenueRow[] }) {
             </div>
           </div>
         </div>
+      )}
+
+      {dialogWeek && (
+        <WeekWorkOrdersDialog
+          weekStart={dialogWeek}
+          visits={rows.filter((r) => weekStartKey(r.scheduled_date) === dialogWeek)}
+          customers={customers}
+          links={links}
+          onClose={() => setDialogWeek(null)}
+          onCreated={(created, newLinks) => {
+            const jobByVisit = new Map(created.map((c) => [c.revenue_id, c.job_id]));
+            setRows((prev) =>
+              prev.map((r) => (jobByVisit.has(r.id) ? { ...r, job_id: jobByVisit.get(r.id) as string } : r))
+            );
+            setLinks((prev) => ({ ...prev, ...newLinks }));
+            setDialogWeek(null);
+            setNotice("Created " + created.length + " work order" + (created.length === 1 ? "" : "s") + ". They are on the admin calendar, ready to assign.");
+          }}
+        />
       )}
     </div>
   );

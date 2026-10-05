@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { REVENUE_SEED } from "@/lib/revenue-seed";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const COLUMNS = "id, name, amount, scheduled_date, series_id";
+const COLUMNS = "id, name, amount, scheduled_date, series_id, job_id";
 const MAX_OCCURRENCES = 150;
 
 async function requireAdmin(supabase: ReturnType<typeof createClient>) {
