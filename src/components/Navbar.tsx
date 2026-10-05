@@ -23,6 +23,7 @@ export function Navbar({ role }: { role: "admin" | "crew" }) {
           { href: "/admin/bulk-import", label: "Bulk Import" },
           { href: "/admin/customers", label: "Customers" },
           { href: "/admin/billing", label: "Billing" },
+          { href: "/admin/revenue", label: "Revenue" },
           { href: "/admin/crew", label: "Crew" },
         ]
       : []),

@@ -1,0 +1,631 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import clsx from "clsx";
+
+export interface RevenueRow {
+  id: string;
+  name: string;
+  amount: number;
+  scheduled_date: string; // YYYY-MM-DD
+  series_id: string;
+}
+
+const WEEKLY_GOAL = 11000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// ---- date helpers (plain calendar dates, no time zones involved) ----
+function parseDate(s: string): Date {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+function dateKey(d: Date): string {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function shiftDate(s: string, days: number): string {
+  const d = parseDate(s);
+  d.setDate(d.getDate() + days);
+  return dateKey(d);
+}
+function daysBetween(a: string, b: string): number {
+  return Math.round((parseDate(b).getTime() - parseDate(a).getTime()) / DAY_MS);
+}
+function weekStartKey(s: string): string {
+  const d = parseDate(s);
+  const dow = d.getDay();
+  d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+  return dateKey(d);
+}
+function fmtMoney(n: number): string {
+  return (
+    "$" + n.toLocaleString("en-US", { minimumFractionDigits: n % 1 === 0 ? 0 : 2, maximumFractionDigits: 2 })
+  );
+}
+function fmtShort(s: string): string {
+  return parseDate(s).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+// ---- chip colors by account group (later groups win, same as before) ----
+const BENTKEY_NAMES = new Set([
+  "Samuel", "Vena", "Produce Ryeco", "USA", "Steel", "Days Bev", "DNF", "Phillys Best",
+  "Scrub Daddy", "Cooseman", "WB NJ", "ITU", "Packer Av", "Dry Ice", "TA Strat",
+  "Amycel", "Mushroom", "Tri State", "Katzman", "Wellington", "Crw", "Unlabeled",
+  "Unlabeled ($495)", "Philabun", "Olivio",
+]);
+const WB_NAMES = new Set(["Ryder WB NJ", "WB (new)", "WB NJ", "Wb Mason", "Wb Mason (Somer)"]);
+const RED_NAMES = new Set(["Viggiano", "Essex", "Pensk KP (Ess)"]);
+
+function isBentkey(name: string, amount: number): boolean {
+  if (BENTKEY_NAMES.has(name)) return true;
+  if (name.includes("(Bentkey)") || name.includes("(BK)")) return true;
+  if (name.toLowerCase().startsWith("bentkey")) return true;
+  if (name === "CTDI" && amount === 150) return true;
+  if (name === "Exp Cab" && amount === 62) return true;
+  return false;
+}
+
+function chipColors(name: string, amount: number): string {
+  if (RED_NAMES.has(name)) return "bg-[#fbdad7] border-[#ecb0aa] text-[#7a1f16]";
+  if (name.toLowerCase().includes("fedex")) return "bg-[#e8dcf5] border-[#c9a8e8] text-[#4a1a6b]";
+  if (WB_NAMES.has(name)) return "bg-[#d4e8fa] border-[#a3cbef] text-[#0d3c66]";
+  if (name.toLowerCase().includes("iron mt")) return "bg-[#fff3c4] border-[#e8d16b] text-[#5c4a03]";
+  if (isBentkey(name, amount)) return "bg-[#dff3df] border-[#b6e0b6] text-[#235a23]";
+  return "bg-[#fdf6e3] border-[#e8d9a8] text-[#5c4a03]";
+}
+
+const REPEAT_OPTIONS = [
+  { value: "0", label: "Just once" },
+  { value: "1", label: "Every week" },
+  { value: "2", label: "Every 2 weeks" },
+  { value: "3", label: "Every 3 weeks" },
+  { value: "4", label: "Every 4 weeks" },
+];
+
+export function RevenuePlanner({ initialRows }: { initialRows: RevenueRow[] }) {
+  const [rows, setRows] = useState<RevenueRow[]>(initialRows);
+  const [repeatSeries, setRepeatSeries] = useState(true);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [selected, setSelected] = useState<RevenueRow | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // add-account form
+  const [newName, setNewName] = useState("");
+  const [newAmount, setNewAmount] = useState("");
+  const [newFirstDate, setNewFirstDate] = useState("");
+  const [newEvery, setNewEvery] = useState("2");
+  const [newUntil, setNewUntil] = useState(() =>
+    initialRows.reduce((max, r) => (r.scheduled_date > max ? r.scheduled_date : max), "")
+  );
+
+  const { byDate, weekTotals, windowStart, windowEnd } = useMemo(() => {
+    const byDate: Record<string, RevenueRow[]> = {};
+    const weekTotals: Record<string, number> = {};
+    let windowStart = "";
+    let windowEnd = "";
+    for (const r of rows) {
+      (byDate[r.scheduled_date] ??= []).push(r);
+      const wk = weekStartKey(r.scheduled_date);
+      weekTotals[wk] = (weekTotals[wk] ?? 0) + r.amount;
+      if (!windowStart || r.scheduled_date < windowStart) windowStart = r.scheduled_date;
+      if (!windowEnd || r.scheduled_date > windowEnd) windowEnd = r.scheduled_date;
+    }
+    return { byDate, weekTotals, windowStart, windowEnd };
+  }, [rows]);
+
+  const stats = useMemo(() => {
+    let total = 0;
+    for (const r of rows) total += r.amount;
+    const fullWeeks: number[] = [];
+    for (const k of Object.keys(weekTotals)) {
+      if (k >= windowStart && shiftDate(k, 6) <= windowEnd) fullWeeks.push(weekTotals[k]);
+    }
+    const avg = fullWeeks.length ? fullWeeks.reduce((a, b) => a + b, 0) / fullWeeks.length : 0;
+    return { total, avg };
+  }, [rows, weekTotals, windowStart, windowEnd]);
+
+  const accountSummary = useMemo(() => {
+    const byName: Record<string, { count: number; total: number }> = {};
+    for (const r of rows) {
+      const e = (byName[r.name] ??= { count: 0, total: 0 });
+      e.count += 1;
+      e.total += r.amount;
+    }
+    return Object.entries(byName).sort((a, b) => b[1].total - a[1].total);
+  }, [rows]);
+
+  const months = useMemo(() => {
+    if (!windowStart) return [];
+    const out: { year: number; month: number; daysInMonth: number; firstDow: number; name: string }[] = [];
+    const start = parseDate(windowStart);
+    const end = parseDate(windowEnd);
+    let cur = new Date(start.getFullYear(), start.getMonth(), 1);
+    const last = new Date(end.getFullYear(), end.getMonth(), 1);
+    while (cur <= last) {
+      const year = cur.getFullYear();
+      const month = cur.getMonth();
+      out.push({
+        year,
+        month,
+        daysInMonth: new Date(year, month + 1, 0).getDate(),
+        firstDow: new Date(year, month, 1).getDay(),
+        name: cur.toLocaleString("en-US", { month: "long", year: "numeric" }),
+      });
+      cur = new Date(year, month + 1, 1);
+    }
+    return out;
+  }, [windowStart, windowEnd]);
+
+  // ---- actions ----
+  async function handleSeed() {
+    setBusy(true);
+    setError(null);
+    const res = await fetch("/api/revenue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "seed" }),
+    });
+    const body = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(body.error ?? "Couldn't load the starting schedule.");
+      return;
+    }
+    setRows((body.rows as RevenueRow[]).map((r) => ({ ...r, amount: Number(r.amount) })));
+  }
+
+  async function handleDrop(e: React.DragEvent, key: string) {
+    e.preventDefault();
+    setDragOverKey(null);
+    const id = e.dataTransfer.getData("text/plain");
+    const acc = rows.find((r) => r.id === id);
+    if (!acc || acc.scheduled_date === key) return;
+
+    const delta = daysBetween(acc.scheduled_date, key);
+    const moving = repeatSeries ? rows.filter((r) => r.series_id === acc.series_id) : [acc];
+    const moves = moving.map((r) => ({ id: r.id, scheduled_date: shiftDate(r.scheduled_date, delta) }));
+    const moveMap = new Map(moves.map((m) => [m.id, m.scheduled_date]));
+
+    const previous = rows;
+    setRows(rows.map((r) => (moveMap.has(r.id) ? { ...r, scheduled_date: moveMap.get(r.id) as string } : r)));
+    setError(null);
+
+    const res = await fetch("/api/revenue", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moves }),
+    });
+    if (!res.ok) {
+      setRows(previous);
+      setError("Couldn't save that move. It was put back - try again.");
+    }
+  }
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const every = Number(newEvery);
+    if (!newName.trim()) return setError("Enter the account name.");
+    if (!(Number(newAmount) > 0)) return setError("Enter an amount greater than zero.");
+    if (!newFirstDate) return setError("Pick the first service date.");
+    if (every > 0 && !newUntil) return setError("Pick a last date for the repeat.");
+
+    setBusy(true);
+    const res = await fetch("/api/revenue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "add",
+        name: newName,
+        amount: Number(newAmount),
+        first_date: newFirstDate,
+        every_weeks: every,
+        until: newUntil,
+      }),
+    });
+    const body = await res.json();
+    setBusy(false);
+    if (!res.ok) {
+      setError(body.error ?? "Couldn't add that account.");
+      return;
+    }
+    const added = (body.rows as RevenueRow[]).map((r) => ({ ...r, amount: Number(r.amount) }));
+    setRows((prev) => [...prev, ...added]);
+    setNewName("");
+    setNewAmount("");
+    setNewFirstDate("");
+  }
+
+  async function removeRows(ids: string[]) {
+    setBusy(true);
+    setError(null);
+    const res = await fetch("/api/revenue", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setError("Couldn't remove that. Try again.");
+      return;
+    }
+    const gone = new Set(ids);
+    setRows((prev) => prev.filter((r) => !gone.has(r.id)));
+    setSelected(null);
+  }
+
+  function exportCSV() {
+    const lines = [["Date", "Account", "Amount"]];
+    [...rows]
+      .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date))
+      .forEach((r) => lines.push([r.scheduled_date, r.name, String(r.amount)]));
+    const csv = lines.map((l) => l.map((v) => (v.includes(",") ? '"' + v + '"' : v)).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "fleet_revenue_schedule.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---- empty state: nothing loaded yet ----
+  if (rows.length === 0) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="bg-white border border-line rounded-lg p-5 max-w-xl">
+          <p className="font-semibold mb-1">No schedule loaded yet</p>
+          <p className="text-sm text-steel mb-3">
+            Load your starting schedule (Aug 10 to Dec 31, 2026) to get going. After that, everything you add,
+            move, or remove is saved here.
+          </p>
+          <button
+            onClick={handleSeed}
+            disabled={busy}
+            className="bg-brand text-white font-semibold px-4 py-2.5 rounded disabled:opacity-50 hover:opacity-90 transition"
+          >
+            {busy ? "Loading..." : "Load starting schedule"}
+          </button>
+        </div>
+        {error && <p className="text-alert text-sm">{error}</p>}
+      </div>
+    );
+  }
+
+  const selectedLater = selected
+    ? rows.filter((r) => r.series_id === selected.series_id && r.scheduled_date >= selected.scheduled_date)
+    : [];
+  const selectedSeries = selected ? rows.filter((r) => r.series_id === selected.series_id) : [];
+  const weekKeys = Object.keys(weekTotals).sort();
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* stats + controls */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="bg-white border border-line rounded-lg px-4 py-2.5 min-w-[150px]">
+          <div className="text-[11px] uppercase tracking-wide text-steel">Avg / week (full weeks)</div>
+          <div className={clsx("text-xl font-semibold", stats.avg >= WEEKLY_GOAL ? "text-go" : "text-alert")}>
+            {fmtMoney(Math.round(stats.avg))}
+          </div>
+        </div>
+        <div className="bg-white border border-line rounded-lg px-4 py-2.5 min-w-[150px]">
+          <div className="text-[11px] uppercase tracking-wide text-steel">Total</div>
+          <div className="text-xl font-semibold text-brand">{fmtMoney(Math.round(stats.total))}</div>
+        </div>
+        <div className="bg-white border border-line rounded-lg px-4 py-2.5 min-w-[150px]">
+          <div className="text-[11px] uppercase tracking-wide text-steel">Weekly goal</div>
+          <div className="text-xl font-semibold text-brand">{fmtMoney(WEEKLY_GOAL)}</div>
+        </div>
+        <button
+          onClick={exportCSV}
+          className="border border-brand text-brand font-semibold px-4 py-2.5 rounded hover:bg-paper transition text-sm"
+        >
+          Export CSV
+        </button>
+        <label className="flex items-center gap-2 text-sm text-steel">
+          <input type="checkbox" checked={repeatSeries} onChange={(e) => setRepeatSeries(e.target.checked)} />
+          Repeat a move across this account&apos;s whole series
+        </label>
+      </div>
+
+      <p className="text-xs text-steel -mt-3">
+        Drag with a mouse (desktop or laptop) to move an account. Click an account to remove it. With the box above
+        checked, moving one Tuesday to Wednesday moves all of that account&apos;s Tuesdays; uncheck it to move just
+        one day.
+      </p>
+
+      {error && <p className="text-alert text-sm">{error}</p>}
+
+      {/* add an account */}
+      <form
+        onSubmit={handleAdd}
+        className="bg-white border border-line rounded-lg p-4 grid grid-cols-1 sm:grid-cols-6 gap-3 items-end"
+      >
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-medium text-steel uppercase tracking-wide mb-1">Account</label>
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            className="w-full border border-line rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+            placeholder="New account name"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-steel uppercase tracking-wide mb-1">Amount</label>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={newAmount}
+            onChange={(e) => setNewAmount(e.target.value)}
+            className="w-full border border-line rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+            placeholder="200"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-steel uppercase tracking-wide mb-1">First date</label>
+          <input
+            type="date"
+            value={newFirstDate}
+            onChange={(e) => setNewFirstDate(e.target.value)}
+            className="w-full border border-line rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-steel uppercase tracking-wide mb-1">Repeat</label>
+          <select
+            value={newEvery}
+            onChange={(e) => setNewEvery(e.target.value)}
+            className="w-full border border-line rounded px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand"
+          >
+            {REPEAT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex gap-2 items-end">
+          {newEvery !== "0" && (
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-steel uppercase tracking-wide mb-1">Through</label>
+              <input
+                type="date"
+                value={newUntil}
+                onChange={(e) => setNewUntil(e.target.value)}
+                className="w-full border border-line rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+              />
+            </div>
+          )}
+          <button
+            type="submit"
+            disabled={busy}
+            className="bg-brand text-white font-semibold px-4 py-2 rounded text-sm disabled:opacity-50 hover:opacity-90 transition"
+          >
+            Add
+          </button>
+        </div>
+      </form>
+
+      {/* group color key */}
+      <div className="flex flex-wrap gap-2 text-[11px]">
+        <span className="px-2 py-0.5 rounded border bg-[#dff3df] border-[#b6e0b6] text-[#235a23]">Bentkey</span>
+        <span className="px-2 py-0.5 rounded border bg-[#fff3c4] border-[#e8d16b] text-[#5c4a03]">Iron Mt</span>
+        <span className="px-2 py-0.5 rounded border bg-[#d4e8fa] border-[#a3cbef] text-[#0d3c66]">WB</span>
+        <span className="px-2 py-0.5 rounded border bg-[#e8dcf5] border-[#c9a8e8] text-[#4a1a6b]">Fedex</span>
+        <span className="px-2 py-0.5 rounded border bg-[#fbdad7] border-[#ecb0aa] text-[#7a1f16]">
+          Viggiano / Essex / Pensk KP
+        </span>
+      </div>
+
+      {/* months */}
+      {months.map((m) => {
+        const mondayIdx = m.firstDow === 0 ? 6 : m.firstDow - 1;
+        const cells: (number | null)[] = [];
+        for (let i = 0; i < mondayIdx; i++) cells.push(null);
+        for (let d = 1; d <= m.daysInMonth; d++) {
+          const key = dateKey(new Date(m.year, m.month, d));
+          cells.push(key < windowStart || key > windowEnd ? null : d);
+        }
+        while (cells.length % 7 !== 0) cells.push(null);
+        const weekRows: (number | null)[][] = [];
+        for (let r = 0; r < cells.length / 7; r++) weekRows.push(cells.slice(r * 7, r * 7 + 7));
+
+        return (
+          <div key={m.year + "-" + m.month}>
+            <div className="font-display text-base font-semibold mb-2">{m.name}</div>
+            <table className="w-full table-fixed border-separate border-spacing-1.5">
+              <thead>
+                <tr>
+                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+                    <th key={d} className="text-[11px] uppercase tracking-wide text-steel font-semibold p-1">
+                      {d}
+                    </th>
+                  ))}
+                  <th className="text-[11px] uppercase tracking-wide text-steel font-semibold p-1 text-right w-28">
+                    Week total
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {weekRows.map((week, wi) => {
+                  const firstDay = week.find((d) => d !== null);
+                  const wk =
+                    firstDay != null ? weekStartKey(dateKey(new Date(m.year, m.month, firstDay as number))) : null;
+                  const wt = wk ? weekTotals[wk] ?? 0 : 0;
+                  const diff = wt - WEEKLY_GOAL;
+                  return (
+                    <tr key={wi}>
+                      {week.map((dayNum, ci) => {
+                        if (dayNum === null) return <td key={ci} />;
+                        const key = dateKey(new Date(m.year, m.month, dayNum));
+                        const dayRows = byDate[key] ?? [];
+                        const dayTotal = dayRows.reduce((s, r) => s + r.amount, 0);
+                        const weekend = ci >= 5;
+                        return (
+                          <td
+                            key={ci}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              setDragOverKey(key);
+                            }}
+                            onDragLeave={() => setDragOverKey((k) => (k === key ? null : k))}
+                            onDrop={(e) => handleDrop(e, key)}
+                            className={clsx(
+                              "align-top border border-line rounded-lg p-1.5 h-[90px]",
+                              weekend ? "bg-[#f1ede4]" : "bg-white",
+                              dragOverKey === key && "outline-dashed outline-2 outline-brand -outline-offset-2"
+                            )}
+                          >
+                            <div className="text-[11px] text-steel mb-1">
+                              {dayNum}
+                              {dayTotal > 0 && (
+                                <span className="float-right text-[10px] text-brand font-semibold">
+                                  {fmtMoney(dayTotal)}
+                                </span>
+                              )}
+                            </div>
+                            {dayRows.map((r) => (
+                              <div
+                                key={r.id}
+                                draggable
+                                onDragStart={(e) => e.dataTransfer.setData("text/plain", r.id)}
+                                onClick={() => setSelected(r)}
+                                title={r.name + " - " + fmtMoney(r.amount)}
+                                className={clsx(
+                                  "block mb-0.5 px-1.5 py-0.5 rounded-md border text-[10px] whitespace-nowrap overflow-hidden text-ellipsis cursor-grab active:cursor-grabbing",
+                                  chipColors(r.name, r.amount)
+                                )}
+                              >
+                                {r.name} <span className="font-bold">{fmtMoney(r.amount)}</span>
+                              </div>
+                            ))}
+                          </td>
+                        );
+                      })}
+                      <td className="align-middle text-right pr-2 font-bold text-sm text-brand whitespace-nowrap">
+                        {wk ? (
+                          <>
+                            {fmtMoney(wt)}
+                            <span className={clsx("block text-[10px] font-medium", diff >= 0 ? "text-go" : "text-alert")}>
+                              {(diff >= 0 ? "+" : "") + fmtMoney(Math.round(diff))} vs goal
+                            </span>
+                          </>
+                        ) : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+
+      {/* summaries */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white border border-line rounded-lg p-4 max-h-[420px] overflow-y-auto">
+          <h2 className="font-semibold text-sm mb-2">Revenue by week (Mon to Sun)</h2>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-steel uppercase text-[11px]">
+                <th className="py-1.5 pr-2">Week</th>
+                <th className="py-1.5 pr-2 text-right">Total</th>
+                <th className="py-1.5 text-right">vs goal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {weekKeys.map((k) => {
+                const end = shiftDate(k, 6);
+                const full = k >= windowStart && end <= windowEnd;
+                const wt = weekTotals[k];
+                const diff = wt - WEEKLY_GOAL;
+                return (
+                  <tr key={k} className="border-t border-line">
+                    <td className="py-1.5 pr-2">
+                      {fmtShort(k)} to {fmtShort(end)}
+                      {full ? "" : " (partial)"}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right font-semibold text-brand">{fmtMoney(wt)}</td>
+                    <td className={clsx("py-1.5 text-right font-semibold", diff >= 0 ? "text-go" : "text-alert")}>
+                      {(diff >= 0 ? "+" : "") + fmtMoney(Math.round(diff))}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="bg-white border border-line rounded-lg p-4 max-h-[420px] overflow-y-auto">
+          <h2 className="font-semibold text-sm mb-2">Revenue by account</h2>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-steel uppercase text-[11px]">
+                <th className="py-1.5 pr-2">Account</th>
+                <th className="py-1.5 pr-2 text-right"># visits</th>
+                <th className="py-1.5 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {accountSummary.map(([name, info]) => (
+                <tr key={name} className="border-t border-line">
+                  <td className="py-1.5 pr-2">{name}</td>
+                  <td className="py-1.5 pr-2 text-right">{info.count}</td>
+                  <td className="py-1.5 text-right font-semibold text-brand">{fmtMoney(info.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* remove dialog */}
+      {selected && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => setSelected(null)}
+        >
+          <div className="bg-white rounded-lg p-5 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <p className="font-semibold">{selected.name}</p>
+            <p className="text-sm text-steel mb-4">
+              {fmtMoney(selected.amount)} on {fmtShort(selected.scheduled_date)}
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                disabled={busy}
+                onClick={() => removeRows([selected.id])}
+                className="border border-alert text-alert font-semibold py-2 rounded text-sm hover:bg-alert/5 transition disabled:opacity-50"
+              >
+                Remove just this one
+              </button>
+              {selectedLater.length > 1 && (
+                <button
+                  disabled={busy}
+                  onClick={() => removeRows(selectedLater.map((r) => r.id))}
+                  className="border border-alert text-alert font-semibold py-2 rounded text-sm hover:bg-alert/5 transition disabled:opacity-50"
+                >
+                  Remove this and all later ones ({selectedLater.length})
+                </button>
+              )}
+              {selectedSeries.length > selectedLater.length && (
+                <button
+                  disabled={busy}
+                  onClick={() => removeRows(selectedSeries.map((r) => r.id))}
+                  className="border border-alert text-alert font-semibold py-2 rounded text-sm hover:bg-alert/5 transition disabled:opacity-50"
+                >
+                  Remove the whole series ({selectedSeries.length})
+                </button>
+              )}
+              <button
+                onClick={() => setSelected(null)}
+                className="border border-line text-steel font-semibold py-2 rounded text-sm hover:bg-paper transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
