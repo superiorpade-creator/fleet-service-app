@@ -215,7 +215,7 @@ function CompletionDocument({ job, units, crew, customer, companyName, companyLo
           View,
           { style: styles.dateBlock },
           React.createElement(Text, { style: styles.dateLabel }, "Date"),
-          React.createElement(Text, { style: styles.dateValue }, job.completed_at ? job.completed_at.slice(0, 10) : today)
+          React.createElement(Text, { style: styles.dateValue }, job.scheduled_date ?? (job.completed_at ? job.completed_at.slice(0, 10) : today))
         )
       ),
       React.createElement(
