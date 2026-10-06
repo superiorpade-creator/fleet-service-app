@@ -142,11 +142,11 @@ export function RevenuePlanner({
     for (const r of rows) total += r.amount;
     const fullWeeks: number[] = [];
     for (const k of Object.keys(weekTotals)) {
-      if (k >= windowStart && shiftDate(k, 6) <= windowEnd) fullWeeks.push(weekTotals[k]);
+      if (k >= windowStart && shiftDate(k, 6) <= (windowEnd < yearEnd ? windowEnd : yearEnd)) fullWeeks.push(weekTotals[k]);
     }
     const avg = fullWeeks.length ? fullWeeks.reduce((a, b) => a + b, 0) / fullWeeks.length : 0;
     return { total, avg };
-  }, [rows, weekTotals, windowStart, windowEnd]);
+  }, [rows, weekTotals, windowStart, windowEnd, yearEnd]);
 
   // A visit is missed once its date has passed and it was either marked missed
   // here or its work order still isn't completed.
@@ -367,7 +367,7 @@ export function RevenuePlanner({
       {/* stats + controls */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="bg-white border border-line rounded-lg px-4 py-2.5 min-w-[150px]">
-          <div className="text-[11px] uppercase tracking-wide text-steel">Avg / week (full weeks)</div>
+          <div className="text-[11px] uppercase tracking-wide text-steel">Avg / week (full weeks to {fmtShort(yearEnd)})</div>
           <div className={clsx("text-xl font-semibold", stats.avg >= WEEKLY_GOAL ? "text-go" : "text-alert")}>
             {fmtMoney(Math.round(stats.avg))}
           </div>
