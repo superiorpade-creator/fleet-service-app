@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Navbar } from "@/components/Navbar";
 import { RevenuePlanner, type RevenueRow } from "@/components/RevenuePlanner";
+import { REVENUE_SEED } from "@/lib/revenue-seed";
 
 export const dynamic = "force-dynamic";
 
@@ -16,13 +17,14 @@ export default async function RevenuePage() {
   if (profile?.role !== "admin") redirect("/calendar");
 
   // The database caps each read at 1000 rows, so read in pages - the
-  // schedule can grow past that once more accounts are added.
+  // schedule can grow past that once more accounts are added. Each visit
+  // comes with the status of its work order, if it has one.
   const rows: RevenueRow[] = [];
   let loadError: string | null = null;
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
       .from("revenue_accounts")
-      .select("id, name, amount, scheduled_date, series_id, job_id")
+      .select("id, name, amount, scheduled_date, series_id, job_id, missed, jobs(status)")
       .order("scheduled_date")
       .order("id")
       .range(from, from + 999);
@@ -31,7 +33,13 @@ export default async function RevenuePage() {
       break;
     }
     const page = data ?? [];
-    rows.push(...page.map((r: any) => ({ ...r, amount: Number(r.amount) })));
+    rows.push(
+      ...page.map((r: any) => {
+        const { jobs, ...rest } = r;
+        const job = Array.isArray(jobs) ? jobs[0] : jobs;
+        return { ...rest, amount: Number(rest.amount), job_status: job?.status ?? null };
+      })
+    );
     if (page.length < 1000) break;
   }
 
@@ -45,6 +53,11 @@ export default async function RevenuePage() {
   const links: Record<string, string | null> = {};
   for (const l of linkRows ?? []) links[l.account_name] = l.customer_id ?? null;
 
+  // What the starting schedule had booked through the end of its year.
+  const seedYear = REVENUE_SEED.length > 0 ? REVENUE_SEED[0][2].slice(0, 4) : String(new Date().getFullYear());
+  const yearEnd = seedYear + "-12-31";
+  const startingTotal = REVENUE_SEED.filter((s) => s[2] <= yearEnd).reduce((sum, s) => sum + s[1], 0);
+
   return (
     <>
       <Navbar role="admin" />
@@ -52,7 +65,8 @@ export default async function RevenuePage() {
         <h1 className="font-display text-2xl font-bold mb-1">Revenue Calendar</h1>
         <p className="text-steel text-sm mb-6">
           Weeks run Monday to Sunday. Drag an account to a different day to reschedule it; everything saves as you go.
-          Use Create work orders on a week to turn its visits into scheduled work orders you can assign later.
+          Use Create work orders on a week to turn its visits into scheduled work orders you can assign later. Red
+          visits are missed ones still to make up.
         </p>
         {loadError ? (
           <div className="bg-white border border-line rounded-lg p-4 text-sm">
@@ -60,7 +74,13 @@ export default async function RevenuePage() {
             <p className="text-steel">Run the one-time setup SQL in Supabase, then reload this page. ({loadError})</p>
           </div>
         ) : (
-          <RevenuePlanner initialRows={rows} customers={customers} initialLinks={links} />
+          <RevenuePlanner
+            initialRows={rows}
+            customers={customers}
+            initialLinks={links}
+            yearEnd={yearEnd}
+            startingTotal={startingTotal}
+          />
         )}
       </main>
     </>

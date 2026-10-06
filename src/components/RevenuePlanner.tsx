@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { WeekWorkOrdersDialog, type CustomerOption } from "./WeekWorkOrdersDialog";
 
@@ -11,6 +11,8 @@ export interface RevenueRow {
   scheduled_date: string; // YYYY-MM-DD
   series_id: string;
   job_id: string | null; // the work order created from this visit, if any
+  missed: boolean; // marked as a visit that didn't happen
+  job_status?: string | null; // status of that work order
 }
 
 const WEEKLY_GOAL = 11000;
@@ -87,10 +89,14 @@ export function RevenuePlanner({
   initialRows,
   customers,
   initialLinks,
+  yearEnd,
+  startingTotal,
 }: {
   initialRows: RevenueRow[];
   customers: CustomerOption[];
   initialLinks: Record<string, string | null>;
+  yearEnd: string;
+  startingTotal: number;
 }) {
   const [rows, setRows] = useState<RevenueRow[]>(initialRows);
   const [repeatSeries, setRepeatSeries] = useState(true);
@@ -101,6 +107,11 @@ export function RevenuePlanner({
   const [links, setLinks] = useState<Record<string, string | null>>(initialLinks);
   const [dialogWeek, setDialogWeek] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Today is read after the page loads, so the server and browser never disagree about it.
+  const [todayKey, setTodayKey] = useState("");
+  useEffect(() => {
+    setTodayKey(dateKey(new Date()));
+  }, []);
 
   // add-account form
   const [newName, setNewName] = useState("");
@@ -136,6 +147,26 @@ export function RevenuePlanner({
     const avg = fullWeeks.length ? fullWeeks.reduce((a, b) => a + b, 0) / fullWeeks.length : 0;
     return { total, avg };
   }, [rows, weekTotals, windowStart, windowEnd]);
+
+  // A visit is missed once its date has passed and it was either marked missed
+  // here or its work order still isn't completed.
+  const missed = useMemo(() => {
+    if (todayKey === "") return { list: [] as RevenueRow[], total: 0 };
+    const list = rows
+      .filter(
+        (r) =>
+          r.scheduled_date < todayKey && (r.missed || (!!r.job_id && r.job_status !== "completed"))
+      )
+      .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date) || a.name.localeCompare(b.name));
+    return { list, total: list.reduce((s, r) => s + r.amount, 0) };
+  }, [rows, todayKey]);
+  const missedIds = useMemo(() => new Set(missed.list.map((r) => r.id)), [missed]);
+
+  // Revenue still booked on or before year end, against the starting schedule.
+  const yearBooked = useMemo(
+    () => rows.filter((r) => r.scheduled_date <= yearEnd).reduce((s, r) => s + r.amount, 0),
+    [rows, yearEnd]
+  );
 
   const accountSummary = useMemo(() => {
     const byName: Record<string, { count: number; total: number }> = {};
@@ -200,7 +231,9 @@ export function RevenuePlanner({
     const moveMap = new Map(moves.map((m) => [m.id, m.scheduled_date]));
 
     const previous = rows;
-    setRows(rows.map((r) => (moveMap.has(r.id) ? { ...r, scheduled_date: moveMap.get(r.id) as string } : r)));
+    setRows(
+      rows.map((r) => (moveMap.has(r.id) ? { ...r, scheduled_date: moveMap.get(r.id) as string, missed: false } : r))
+    );
     setError(null);
 
     const res = await fetch("/api/revenue", {
@@ -267,6 +300,23 @@ export function RevenuePlanner({
     setSelected(null);
   }
 
+  async function setMissedFlag(id: string, value: boolean) {
+    setBusy(true);
+    setError(null);
+    const res = await fetch("/api/revenue", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mark: { ids: [id], missed: value } }),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setError("Couldn't save that. Try again.");
+      return;
+    }
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, missed: value } : r)));
+    setSelected(null);
+  }
+
   function exportCSV() {
     const lines = [["Date", "Account", "Amount"]];
     [...rows]
@@ -330,6 +380,13 @@ export function RevenuePlanner({
           <div className="text-[11px] uppercase tracking-wide text-steel">Weekly goal</div>
           <div className="text-xl font-semibold text-brand">{fmtMoney(WEEKLY_GOAL)}</div>
         </div>
+        <div className="bg-white border border-line rounded-lg px-4 py-2.5 min-w-[150px]">
+          <div className="text-[11px] uppercase tracking-wide text-steel">Booked through {fmtShort(yearEnd)}</div>
+          <div className="text-xl font-semibold text-brand">{fmtMoney(Math.round(yearBooked))}</div>
+          <div className={clsx("text-[10px] font-medium", yearBooked >= startingTotal ? "text-go" : "text-alert")}>
+            {(yearBooked >= startingTotal ? "+" : "") + fmtMoney(Math.round(yearBooked - startingTotal))} vs starting plan
+          </div>
+        </div>
         <button
           onClick={exportCSV}
           className="border border-brand text-brand font-semibold px-4 py-2.5 rounded hover:bg-paper transition text-sm"
@@ -350,6 +407,47 @@ export function RevenuePlanner({
 
       {error && <p className="text-alert text-sm">{error}</p>}
       {notice && <p className="text-go text-sm">{notice}</p>}
+
+      {/* missed visits to make up */}
+      <div className="bg-white border border-line rounded-lg p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+          <h2 className="font-semibold text-sm">Missed visits to make up</h2>
+          <span className={clsx("text-xs", missed.list.length > 0 ? "text-alert font-semibold" : "text-go")}>
+            {missed.list.length === 0
+              ? "None missed"
+              : missed.list.length + " visit(s), " + fmtMoney(Math.round(missed.total)) + " still to make up"}
+          </span>
+        </div>
+        {missed.list.length > 0 && (
+          <div className="max-h-56 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-steel uppercase text-[11px]">
+                  <th className="py-1.5 pr-2">Was due</th>
+                  <th className="py-1.5 pr-2">Account</th>
+                  <th className="py-1.5 pr-2 text-right">Amount</th>
+                  <th className="py-1.5 text-right">Days late</th>
+                </tr>
+              </thead>
+              <tbody>
+                {missed.list.map((r) => (
+                  <tr key={r.id} onClick={() => setSelected(r)} className="border-t border-line cursor-pointer hover:bg-paper">
+                    <td className="py-1.5 pr-2">{fmtShort(r.scheduled_date)}</td>
+                    <td className="py-1.5 pr-2">{r.name}</td>
+                    <td className="py-1.5 pr-2 text-right font-semibold text-alert">{fmtMoney(r.amount)}</td>
+                    <td className="py-1.5 text-right">{daysBetween(r.scheduled_date, todayKey)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-[11px] text-steel mt-2">
+          A visit turns red once its date has passed and it was marked missed here, or its work order isn&apos;t
+          completed. Drag a red visit to the day you&apos;ll make it up (uncheck the repeat box first so only that
+          visit moves). Click one to mark it missed or done.
+        </p>
+      </div>
 
       {/* add an account */}
       <form
@@ -509,7 +607,9 @@ export function RevenuePlanner({
                                 title={r.name + " - " + fmtMoney(r.amount)}
                                 className={clsx(
                                   "block mb-0.5 px-1.5 py-0.5 rounded-md border text-[10px] whitespace-nowrap overflow-hidden text-ellipsis cursor-grab active:cursor-grabbing",
-                                  chipColors(r.name, r.amount)
+                                  missedIds.has(r.id)
+                                    ? "bg-[#fde2e2] border-[#e05252] text-[#8f1d1d] font-semibold"
+                                    : chipColors(r.name, r.amount)
                                 )}
                               >
                                 {r.job_id && <span className="inline-block w-1.5 h-1.5 rounded-full bg-go mr-1 align-middle" />}
@@ -621,7 +721,28 @@ export function RevenuePlanner({
                 This visit already has a work order. Removing it here does not delete the work order.
               </p>
             )}
+            {missedIds.has(selected.id) && !selected.missed && (
+              <p className="text-xs text-alert mb-3">Red because its work order is not completed yet.</p>
+            )}
             <div className="flex flex-col gap-2">
+              {todayKey !== "" && selected.scheduled_date < todayKey && !selected.missed && (
+                <button
+                  disabled={busy}
+                  onClick={() => setMissedFlag(selected.id, true)}
+                  className="border border-alert bg-alert/5 text-alert font-semibold py-2 rounded text-sm hover:bg-alert/10 transition disabled:opacity-50"
+                >
+                  Mark as missed (didn&apos;t happen)
+                </button>
+              )}
+              {selected.missed && (
+                <button
+                  disabled={busy}
+                  onClick={() => setMissedFlag(selected.id, false)}
+                  className="border border-go text-go font-semibold py-2 rounded text-sm hover:bg-go/5 transition disabled:opacity-50"
+                >
+                  Mark as done (it did happen)
+                </button>
+              )}
               <button
                 disabled={busy}
                 onClick={() => removeRows([selected.id])}

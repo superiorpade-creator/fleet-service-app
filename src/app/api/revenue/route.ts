@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { REVENUE_SEED } from "@/lib/revenue-seed";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const COLUMNS = "id, name, amount, scheduled_date, series_id, job_id";
+const COLUMNS = "id, name, amount, scheduled_date, series_id, job_id, missed";
 const MAX_OCCURRENCES = 150;
 
 async function requireAdmin(supabase: ReturnType<typeof createClient>) {
@@ -95,6 +95,23 @@ export async function PATCH(request: NextRequest) {
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await request.json();
+
+  // Mark visits as missed (or clear that) - for rain-outs and visits that didn't happen.
+  if (body.mark && Array.isArray(body.mark.ids)) {
+    const markIds: string[] = body.mark.ids.filter((id: unknown) => typeof id === "string");
+    if (markIds.length === 0 || markIds.length > 200) {
+      return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
+    }
+    for (let i = 0; i < markIds.length; i += 50) {
+      const { error } = await supabase
+        .from("revenue_accounts")
+        .update({ missed: body.mark.missed === true })
+        .in("id", markIds.slice(i, i + 50));
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   const moves: { id: string; scheduled_date: string }[] = Array.isArray(body.moves) ? body.moves : [];
   if (moves.length === 0 || moves.length > 500) {
     return NextResponse.json({ error: "Nothing to move." }, { status: 400 });
@@ -106,7 +123,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const results = await Promise.all(
-    moves.map((m) => supabase.from("revenue_accounts").update({ scheduled_date: m.scheduled_date }).eq("id", m.id))
+    moves.map((m) => supabase.from("revenue_accounts").update({ scheduled_date: m.scheduled_date, missed: false }).eq("id", m.id))
   );
   const failed = results.find((r) => r.error);
   if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 });
