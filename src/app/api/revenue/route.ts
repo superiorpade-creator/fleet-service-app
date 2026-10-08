@@ -112,6 +112,23 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // Change what visits are worth - one visit, or this and later ones (the screen works out which ids).
+  if (body.amount && Array.isArray(body.amount.ids)) {
+    const ids: string[] = body.amount.ids.filter((id: unknown) => typeof id === "string");
+    const value = Math.round(Number(body.amount.value) * 100) / 100;
+    if (ids.length === 0 || ids.length > 500) {
+      return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
+    }
+    if (!Number.isFinite(value) || value < 0 || value > 100000) {
+      return NextResponse.json({ error: "Enter an amount between 0 and 100,000." }, { status: 400 });
+    }
+    for (let i = 0; i < ids.length; i += 50) {
+      const { error } = await supabase.from("revenue_accounts").update({ amount: value }).in("id", ids.slice(i, i + 50));
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   const moves: { id: string; scheduled_date: string }[] = Array.isArray(body.moves) ? body.moves : [];
   if (moves.length === 0 || moves.length > 500) {
     return NextResponse.json({ error: "Nothing to move." }, { status: 400 });

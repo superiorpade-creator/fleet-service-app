@@ -106,6 +106,12 @@ export function RevenuePlanner({
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [selected, setSelected] = useState<RevenueRow | null>(null);
   const [busy, setBusy] = useState(false);
+  const [amountDraft, setAmountDraft] = useState<{ id: string; value: string } | null>(null);
+
+  // A half-typed amount should not carry over to the next visit you open.
+  useEffect(() => {
+    if (!selected) setAmountDraft(null);
+  }, [selected]);
   const [error, setError] = useState<string | null>(null);
   const [links, setLinks] = useState<Record<string, string | null>>(initialLinks);
   const [dialogWeek, setDialogWeek] = useState<string | null>(null);
@@ -286,6 +292,32 @@ export function RevenuePlanner({
     setNewName("");
     setNewAmount("");
     setNewFirstDate("");
+  }
+
+  async function saveAmount(ids: string[]) {
+    if (!selected) return;
+    const raw = amountDraft && amountDraft.id === selected.id ? amountDraft.value : String(selected.amount);
+    const value = Math.round(Number(raw) * 100) / 100;
+    if (raw.trim() === "" || !Number.isFinite(value) || value < 0 || value > 100000) {
+      setError("Enter an amount between $0 and $100,000.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const res = await fetch("/api/revenue", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount: { ids, value } }),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setError("Couldn't save that. Try again.");
+      return;
+    }
+    const changed = new Set(ids);
+    setRows((prev) => prev.map((r) => (changed.has(r.id) ? { ...r, amount: value } : r)));
+    setAmountDraft(null);
+    setSelected(null);
   }
 
   async function removeRows(ids: string[]) {
@@ -778,6 +810,39 @@ export function RevenuePlanner({
             {missedIds.has(selected.id) && !selected.missed && (
               <p className="text-xs text-alert mb-3">{selected.series_id.startsWith("bk::") ? "Red because this Bentkey stop is past its day and not marked done." : "Red because its work order is not completed yet."}</p>
             )}
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-steel uppercase tracking-wide mb-1">Change amount</label>
+              <div className="flex items-center gap-2">
+                <span className="text-steel">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={amountDraft && amountDraft.id === selected.id ? amountDraft.value : String(selected.amount)}
+                  onChange={(e) => setAmountDraft({ id: selected.id, value: e.target.value })}
+                  className="w-28 border border-line rounded px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                <button
+                  disabled={busy}
+                  onClick={() => saveAmount([selected.id])}
+                  className="border border-brand text-brand font-semibold py-1.5 px-3 rounded text-sm hover:bg-brand/5 transition disabled:opacity-50"
+                >
+                  Save for this visit
+                </button>
+                {selectedLater.length > 1 && (
+                  <button
+                    disabled={busy}
+                    onClick={() => saveAmount(selectedLater.map((r) => r.id))}
+                    className="border border-brand text-brand font-semibold py-1.5 px-3 rounded text-sm hover:bg-brand/5 transition disabled:opacity-50"
+                  >
+                    Save for this and all later ({selectedLater.length})
+                  </button>
+                )}
+              </div>
+              {error && <p className="text-xs text-alert mt-2">{error}</p>}
+            </div>
             <div className="flex flex-col gap-2">
               {todayKey !== "" && selected.scheduled_date < todayKey && !selected.missed && (
                 <button
