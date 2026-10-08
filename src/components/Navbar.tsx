@@ -24,7 +24,6 @@ export function Navbar({ role }: { role: "admin" | "crew" }) {
           { href: "/admin/customers", label: "Customers" },
           { href: "/admin/billing", label: "Billing" },
           { href: "/admin/revenue", label: "Revenue" },
-          { href: "/admin/bentkey", label: "Bentkey" },
           { href: "/admin/crew", label: "Crew" },
         ]
       : []),

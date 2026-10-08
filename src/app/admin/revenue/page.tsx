@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Navbar } from "@/components/Navbar";
 import { RevenuePlanner, type RevenueRow } from "@/components/RevenuePlanner";
@@ -25,7 +24,7 @@ export default async function RevenuePage() {
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
       .from("revenue_accounts")
-      .select("id, name, amount, scheduled_date, series_id, job_id, missed, jobs(status)")
+      .select("id, name, amount, scheduled_date, series_id, job_id, missed, done, jobs(status)")
       .order("scheduled_date")
       .order("id")
       .range(from, from + 999);
@@ -54,19 +53,11 @@ export default async function RevenuePage() {
   const links: Record<string, string | null> = {};
   for (const l of linkRows ?? []) links[l.account_name] = l.customer_id ?? null;
 
-  // Bentkey stops that are overdue (the weekly Bentkey work orders live on their own page).
-  let bkCount = 0;
-  let bkDollars = 0;
-  const { data: bkRows } = await supabase.from("bentkey_stops").select("amount, next_due").eq("active", true);
-  const bkNow = new Date();
-  bkNow.setUTCDate(bkNow.getUTCDate() - (bkNow.getUTCDay() === 0 ? 6 : bkNow.getUTCDay() - 1));
-  const bkMonday = bkNow.toISOString().slice(0, 10);
-  for (const s of bkRows ?? []) {
-    if (s.next_due < bkMonday) {
-      bkCount += 1;
-      bkDollars += Number(s.amount);
-    }
-  }
+  // Bentkey stops still in the old list, waiting to be moved onto this calendar.
+  const { count: bkPending } = await supabase
+    .from("bentkey_stops")
+    .select("id", { count: "exact", head: true })
+    .eq("active", true);
 
   // What the starting schedule had booked through the end of its year.
   const seedYear = REVENUE_SEED.length > 0 ? REVENUE_SEED[0][2].slice(0, 4) : String(new Date().getFullYear());
@@ -83,12 +74,6 @@ export default async function RevenuePage() {
           Use Create work orders on a week to turn its visits into scheduled work orders you can assign later. Red
           visits are missed ones still to make up.
         </p>
-        {bkCount > 0 && (
-          <Link href="/admin/bentkey" className="block bg-white border border-alert rounded-lg px-4 py-3 mb-4 text-sm">
-            <span className="font-semibold text-alert">{bkCount} Bentkey stops overdue</span>
-            <span className="text-steel"> - about ${Math.round(bkDollars)} still to make up. Open the Bentkey page.</span>
-          </Link>
-        )}
         {loadError ? (
           <div className="bg-white border border-line rounded-lg p-4 text-sm">
             <p className="font-semibold mb-1">The revenue tables aren't set up yet.</p>
@@ -101,6 +86,7 @@ export default async function RevenuePage() {
             initialLinks={links}
             yearEnd={yearEnd}
             startingTotal={startingTotal}
+            bentkeyPending={bkPending ?? 0}
           />
         )}
       </main>

@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { REVENUE_SEED } from "@/lib/revenue-seed";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const COLUMNS = "id, name, amount, scheduled_date, series_id, job_id, missed";
+const COLUMNS = "id, name, amount, scheduled_date, series_id, job_id, missed, done";
 const MAX_OCCURRENCES = 150;
 
 async function requireAdmin(supabase: ReturnType<typeof createClient>) {
@@ -105,7 +105,7 @@ export async function PATCH(request: NextRequest) {
     for (let i = 0; i < markIds.length; i += 50) {
       const { error } = await supabase
         .from("revenue_accounts")
-        .update({ missed: body.mark.missed === true })
+        .update(body.mark.done === true ? { done: true, missed: false } : { missed: body.mark.missed === true, done: false })
         .in("id", markIds.slice(i, i + 50));
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
@@ -123,7 +123,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const results = await Promise.all(
-    moves.map((m) => supabase.from("revenue_accounts").update({ scheduled_date: m.scheduled_date, missed: false }).eq("id", m.id))
+    moves.map((m) => supabase.from("revenue_accounts").update({ scheduled_date: m.scheduled_date, missed: false, done: false }).eq("id", m.id))
   );
   const failed = results.find((r) => r.error);
   if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 });

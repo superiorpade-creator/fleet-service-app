@@ -12,6 +12,7 @@ export interface RevenueRow {
   series_id: string;
   job_id: string | null; // the work order created from this visit, if any
   missed: boolean; // marked as a visit that didn't happen
+  done: boolean; // a Bentkey stop marked as serviced
   job_status?: string | null; // status of that work order
 }
 
@@ -54,7 +55,7 @@ const BENTKEY_NAMES = new Set([
   "Samuel", "Vena", "Produce Ryeco", "USA", "Steel", "Days Bev", "DNF", "Phillys Best",
   "Scrub Daddy", "Cooseman", "WB NJ", "ITU", "Packer Av", "Dry Ice", "TA Strat",
   "Amycel", "Mushroom", "Tri State", "Katzman", "Wellington", "Crw", "Unlabeled",
-  "Unlabeled ($495)", "Philabun", "Olivio",
+  "Unlabeled ($495)", "Philabun", "Olivio", "Durato",
 ]);
 const WB_NAMES = new Set(["Ryder WB NJ", "WB (new)", "WB NJ", "Wb Mason", "Wb Mason (Somer)"]);
 const RED_NAMES = new Set(["Viggiano", "Essex", "Pensk KP (Ess)"]);
@@ -91,12 +92,14 @@ export function RevenuePlanner({
   initialLinks,
   yearEnd,
   startingTotal,
+  bentkeyPending,
 }: {
   initialRows: RevenueRow[];
   customers: CustomerOption[];
   initialLinks: Record<string, string | null>;
   yearEnd: string;
   startingTotal: number;
+  bentkeyPending: number;
 }) {
   const [rows, setRows] = useState<RevenueRow[]>(initialRows);
   const [repeatSeries, setRepeatSeries] = useState(true);
@@ -155,7 +158,10 @@ export function RevenuePlanner({
     const list = rows
       .filter(
         (r) =>
-          r.scheduled_date < todayKey && (r.missed || (!!r.job_id && r.job_status !== "completed"))
+          r.scheduled_date < todayKey &&
+          (r.missed ||
+            (!!r.job_id && r.job_status !== "completed") ||
+            (r.series_id.startsWith("bk::") && !r.done && !(r.job_id && r.job_status === "completed")))
       )
       .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date) || a.name.localeCompare(b.name));
     return { list, total: list.reduce((s, r) => s + r.amount, 0) };
@@ -232,7 +238,7 @@ export function RevenuePlanner({
 
     const previous = rows;
     setRows(
-      rows.map((r) => (moveMap.has(r.id) ? { ...r, scheduled_date: moveMap.get(r.id) as string, missed: false } : r))
+      rows.map((r) => (moveMap.has(r.id) ? { ...r, scheduled_date: moveMap.get(r.id) as string, missed: false, done: false } : r))
     );
     setError(null);
 
@@ -300,6 +306,37 @@ export function RevenuePlanner({
     setSelected(null);
   }
 
+  async function setDoneFlag(id: string) {
+    setBusy(true);
+    setError(null);
+    const res = await fetch("/api/revenue", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mark: { ids: [id], done: true } }),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setError("Couldn't save that. Try again.");
+      return;
+    }
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, done: true, missed: false } : r)));
+    setSelected(null);
+  }
+
+  async function moveBentkey() {
+    if (!confirm("Move the Bentkey stops onto this calendar? Their old calendar entries from their first due date on are replaced.")) return;
+    setBusy(true);
+    setError(null);
+    const res = await fetch("/api/revenue/bentkey", { method: "POST" });
+    const body = await res.json();
+    if (!res.ok) {
+      setBusy(false);
+      setError(body.error ?? "Couldn't move the Bentkey stops.");
+      return;
+    }
+    window.location.reload();
+  }
+
   async function setMissedFlag(id: string, value: boolean) {
     setBusy(true);
     setError(null);
@@ -313,7 +350,7 @@ export function RevenuePlanner({
       setError("Couldn't save that. Try again.");
       return;
     }
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, missed: value } : r)));
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, missed: value, done: value ? false : r.done } : r)));
     setSelected(null);
   }
 
@@ -448,6 +485,23 @@ export function RevenuePlanner({
           visit moves). Click one to mark it missed or done.
         </p>
       </div>
+
+      {bentkeyPending > 0 && (
+        <div className="bg-white border border-line rounded-lg p-4 flex flex-wrap items-center gap-3">
+          <p className="text-sm flex-1 min-w-[240px]">
+            <span className="font-semibold">{bentkeyPending} Bentkey stops are still in the old list.</span> Move them
+            onto this calendar to schedule each one by day. Their old calendar entries from their first due date on are
+            replaced.
+          </p>
+          <button
+            onClick={moveBentkey}
+            disabled={busy}
+            className="bg-brand text-white font-semibold px-4 py-2 rounded text-sm disabled:opacity-50 hover:opacity-90 transition"
+          >
+            {busy ? "Moving..." : "Move Bentkey onto the calendar"}
+          </button>
+        </div>
+      )}
 
       {/* add an account */}
       <form
@@ -722,7 +776,7 @@ export function RevenuePlanner({
               </p>
             )}
             {missedIds.has(selected.id) && !selected.missed && (
-              <p className="text-xs text-alert mb-3">Red because its work order is not completed yet.</p>
+              <p className="text-xs text-alert mb-3">{selected.series_id.startsWith("bk::") ? "Red because this Bentkey stop is past its day and not marked done." : "Red because its work order is not completed yet."}</p>
             )}
             <div className="flex flex-col gap-2">
               {todayKey !== "" && selected.scheduled_date < todayKey && !selected.missed && (
@@ -734,7 +788,16 @@ export function RevenuePlanner({
                   Mark as missed (didn&apos;t happen)
                 </button>
               )}
-              {selected.missed && (
+              {selected.series_id.startsWith("bk::") && !selected.done && todayKey !== "" && selected.scheduled_date < todayKey && (
+                <button
+                  disabled={busy}
+                  onClick={() => setDoneFlag(selected.id)}
+                  className="border border-go text-go font-semibold py-2 rounded text-sm hover:bg-go/5 transition disabled:opacity-50"
+                >
+                  Mark as done (serviced)
+                </button>
+              )}
+              {selected.missed && !selected.series_id.startsWith("bk::") && (
                 <button
                   disabled={busy}
                   onClick={() => setMissedFlag(selected.id, false)}

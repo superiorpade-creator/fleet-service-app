@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server";
 import { sendSms, getAlertRecipients } from "@/lib/sms";
-import { advanceBentkeyStops } from "@/lib/bentkey";
 import { formatWorkOrderNumber } from "@/lib/format";
 
 // When a job closes, any truck on it that isn't already in the customer's
@@ -72,12 +71,6 @@ export async function POST(_request: NextRequest, { params }: { params: { id: st
       await addNewUnitsToCustomerList(params.id, job.customer_id);
     } catch {}
   }
-
-  // Bentkey weekly work orders: stops that were checked off roll forward to
-  // their next due date; unchecked ones stay due and carry into next week.
-  try {
-    await advanceBentkeyStops(createServiceRoleClient(), params.id);
-  } catch {}
 
   // Text the admin alert numbers now that it's actually saved - a text
   // send failing (bad number, Twilio hiccup) should never block the
