@@ -95,6 +95,20 @@ export function JobChecklist({
     e.preventDefault();
     const unit_number = newUnitNumber.trim();
     if (!unit_number) return;
+    // New units copy the most common type already on this work order.
+    const typeCounts = new Map<string, number>();
+    for (const existing of units) {
+      const t = (existing.unit_type ?? "").trim();
+      if (t) typeCounts.set(t, (typeCounts.get(t) ?? 0) + 1);
+    }
+    let defaultType: string | null = null;
+    let bestCount = 0;
+    for (const [t, n] of Array.from(typeCounts.entries())) {
+      if (n > bestCount) {
+        bestCount = n;
+        defaultType = t;
+      }
+    }
 
     setAdding(true);
     setError(null);
@@ -107,6 +121,7 @@ export function JobChecklist({
         unit_number,
         serviced: true,
         serviced_at: new Date().toISOString(),
+        unit_type: defaultType,
         sort_order: units.length,
       })
       .select()
